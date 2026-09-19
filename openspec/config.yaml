@@ -1,0 +1,36 @@
+schema: spec-driven
+
+context: |
+  Product: Public, reproducible conversational guardrail benchmark.
+  Initial comparison: TypeSafe AI Jev versus configurable LLM baselines.
+  Runtime: Python 3.12 managed with uv.
+  Test framework: pytest.
+  Result site: static HTML, CSS, and JavaScript generated from versioned JSON.
+  Initial dataset: WildJailbreak, pinned to an immutable Hugging Face revision.
+
+  Benchmark order:
+  1. Harmful jailbreak attempts
+  2. Adversarial or jailbreak techniques
+  3. Abuse disclosures
+  4. Financial advice
+
+  Research rules:
+  - Apply the same source examples and equivalent classifier meaning to every system.
+  - Treat dataset labels, classifier definitions, and model questions as separate versioned concerns.
+  - Prefer precision, recall, F1, and confusion matrices over accuracy alone.
+  - Never publish sampled results without their sample rate, count, strata, and seed.
+  - Never automatically trigger paid model evaluations after detecting an upstream revision.
+
+rules:
+  specs:
+    - Express requirements as observable benchmark behavior.
+    - Include positive, negative, reproducibility, and failure scenarios.
+    - State the exact label mapping for each classifier.
+  design:
+    - Record material fairness and reproducibility decisions.
+    - Keep datasets, classifiers, and model providers behind explicit interfaces.
+    - Avoid storing API keys, provider secrets, or downloaded datasets in Git.
+  tasks:
+    - Include unit tests for label mapping, sampling, metrics, and schemas.
+    - Include a small fixture-based smoke test that makes no paid API calls.
+    - Include documentation and reproducibility checks.
