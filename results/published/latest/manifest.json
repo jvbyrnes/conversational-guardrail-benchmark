@@ -1,0 +1,48 @@
+{
+  "schema_version": "1.0.0",
+  "run_id": "20260919T010425Z-9a6d7c635787",
+  "code_revision": "e9510dcb674b63775ec787842492e165da9500d9",
+  "dataset": {
+    "name": "allenai/wildjailbreak-fixture",
+    "revision": "fixture-v1",
+    "split": "test",
+    "config_name": null,
+    "schema_fingerprint": "8f1d41f225635fcea47ab9a363a977de219169ca3eceb7c3ded7782c2049330c",
+    "retrieved_at": "2026-09-19T01:04:25.462770Z"
+  },
+  "task_id": "adversarial_technique",
+  "classifier_version": "1.0.0",
+  "sample_rate": 1.0,
+  "sample_count": 8,
+  "seed": 20260918,
+  "strata": {
+    "adversarial_benign": {
+      "eligible": 2,
+      "selected": 2
+    },
+    "adversarial_harmful": {
+      "eligible": 2,
+      "selected": 2
+    },
+    "vanilla_benign": {
+      "eligible": 2,
+      "selected": 2
+    },
+    "vanilla_harmful": {
+      "eligible": 2,
+      "selected": 2
+    }
+  },
+  "run_kind": "publication",
+  "models": {
+    "fake": {
+      "kind": "fake",
+      "model": "deterministic-fake-v1",
+      "parameters": {}
+    }
+  },
+  "pricing_version": "2026-09-19",
+  "started_at": "2026-09-19T01:04:25.462364Z",
+  "completed_at": "2026-09-19T01:04:25.464697Z",
+  "wall_clock_duration_ms": 2.333
+}

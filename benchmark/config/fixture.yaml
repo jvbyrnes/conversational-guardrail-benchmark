@@ -1,0 +1,19 @@
+dataset:
+  name: allenai/wildjailbreak-fixture
+  revision: fixture-v1
+  split: test
+  fixture_path: benchmark/tests/fixtures/wildjailbreak.jsonl
+task: adversarial_technique
+sample:
+  rate: 1.0
+  seed: 20260918
+adapters:
+  - id: fake
+    kind: fake
+    model: deterministic-fake-v1
+execution:
+  concurrency: 4
+  retries: 1
+  timeout_seconds: 5
+output_dir: results/runs
+pricing_file: benchmark/config/pricing.yaml
