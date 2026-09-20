@@ -22,7 +22,6 @@ from guardrail_bench.config import AdapterConfig, BenchmarkConfig
 from guardrail_bench.dataset import load_wildjailbreak
 from guardrail_bench.metrics import aggregate
 from guardrail_bench.models import AggregateResult, Prediction, RunManifest
-from guardrail_bench.pricing import load_pricing
 from guardrail_bench.sampling import stratified_sample
 from guardrail_bench.tasks import get_task
 
@@ -58,7 +57,6 @@ async def run(config: BenchmarkConfig) -> tuple[RunManifest, list[Prediction], A
     task = get_task(config.task)
     examples, dataset_metadata = load_wildjailbreak(config.dataset)
     selected, strata = stratified_sample(examples, task, config.sample.rate, config.sample.seed)
-    pricing = load_pricing(config.pricing_file)
     identity = json.dumps(
         {
             "dataset": config.dataset.revision,
@@ -95,7 +93,7 @@ async def run(config: BenchmarkConfig) -> tuple[RunManifest, list[Prediction], A
             score=result.score,
             latency_ms=latency,
             usage=result.usage,
-            estimated_cost_usd=pricing.cost(adapter.model_id, result.usage),
+            estimated_cost_usd=float(result.usage.provider_fields.get("cost", 0.0)),
             error=result.error,
         )
 
@@ -123,7 +121,7 @@ async def run(config: BenchmarkConfig) -> tuple[RunManifest, list[Prediction], A
         strata=strata,
         run_kind="publication" if config.sample.rate == 1 else "exploratory",
         models={item.id: {"kind": item.kind, "model": item.model, "parameters": item.parameters} for item in enabled},
-        pricing_version=pricing.version,
+        pricing_version="provider-reported",
         started_at=started,
         completed_at=completed,
         wall_clock_duration_ms=(completed - started).total_seconds() * 1000,

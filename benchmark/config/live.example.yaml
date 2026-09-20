@@ -17,6 +17,26 @@ adapters:
     model: openai/gpt-4.1-mini
     parameters:
       temperature: 0
+  # Structured-output-capable OpenAI tiers (catalog checked 2026-09-20).
+  # - id: openai-luna
+  #   kind: openrouter
+  #   model: openai/gpt-5.6-luna
+  # - id: openai-terra
+  #   kind: openrouter
+  #   model: openai/gpt-5.6-terra
+  # - id: openai-sol
+  #   kind: openrouter
+  #   model: openai/gpt-5.6-sol
+  # Structured-output-capable Anthropic tiers (catalog checked 2026-09-20).
+  # - id: anthropic-haiku
+  #   kind: openrouter
+  #   model: anthropic/claude-haiku-4.5
+  # - id: anthropic-sonnet
+  #   kind: openrouter
+  #   model: anthropic/claude-sonnet-4.6
+  # - id: anthropic-opus
+  #   kind: openrouter
+  #   model: anthropic/claude-opus-4.6
 execution:
   concurrency: 4
   retries: 2

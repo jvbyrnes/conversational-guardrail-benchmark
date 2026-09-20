@@ -54,7 +54,6 @@ class BenchmarkConfig(ConfigModel):
     adapters: list[AdapterConfig]
     execution: ExecutionConfig = Field(default_factory=ExecutionConfig)
     output_dir: Path = Path("results/runs")
-    pricing_file: Path = Path("benchmark/config/pricing.yaml")
 
 
 def load_config(
