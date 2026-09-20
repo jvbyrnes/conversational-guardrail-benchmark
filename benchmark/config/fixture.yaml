@@ -16,4 +16,3 @@ execution:
   retries: 1
   timeout_seconds: 5
 output_dir: results/runs
-pricing_file: benchmark/config/pricing.yaml

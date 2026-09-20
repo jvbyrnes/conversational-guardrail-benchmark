@@ -49,9 +49,8 @@ OpenRouter uses its OpenAI-compatible chat-completions endpoint. Model names ret
 their OpenRouter provider prefix (for example, `openai/gpt-4.1-mini`). The optional
 `OPENROUTER_HTTP_REFERER` and `OPENROUTER_APP_TITLE` variables populate OpenRouter's
 attribution headers. Models used for this benchmark must support structured JSON
-Schema output. Add the exact OpenRouter model ID and its prices to
-`benchmark/config/pricing.yaml`; otherwise token counts are recorded but estimated
-cost is zero.
+Schema output. OpenRouter request metadata supplies billed cost; the runner records
+that value when available, so model prices do not need to be maintained here.
 
 Do not put secrets in YAML. `.env` is ignored, but the runner does not load it implicitly.
 

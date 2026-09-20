@@ -137,6 +137,7 @@ class OpenRouterAdapter(OpenAIAdapter):
                     },
                 },
             },
+            "usage": {"include": True},
         }
         headers = {"Authorization": f"Bearer {self.api_key}"}
         if referer := os.environ.get("OPENROUTER_HTTP_REFERER"):
