@@ -13,7 +13,6 @@ from guardrail_bench.adapters import (
     FakeAdapter,
     JevAdapter,
     ModelAdapter,
-    OpenAIAdapter,
     OpenRouterAdapter,
     call_with_retry,
 )
@@ -33,7 +32,7 @@ def _adapter(config: AdapterConfig) -> ModelAdapter:
         return JevAdapter(config.id, config.model, config.parameters)
     if config.kind == "openrouter":
         return OpenRouterAdapter(config.id, config.model, config.parameters)
-    return OpenAIAdapter(config.id, config.model, config.parameters)
+    raise ValueError(f"unsupported adapter kind: {config.kind}")
 
 
 def _git_revision() -> str:

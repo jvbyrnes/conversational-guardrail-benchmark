@@ -40,77 +40,13 @@ class FakeAdapter:
         return AdapterResult(positive, score=0.9 if positive else 0.1)
 
 
-class OpenAIAdapter:
+class OpenRouterAdapter:
+    """OpenRouter's OpenAI-compatible chat-completions API."""
+
     def __init__(self, adapter_id: str, model_id: str, parameters: dict[str, Any] | None = None) -> None:
         self.adapter_id = adapter_id
         self.model_id = model_id
         self.parameters = parameters or {}
-        self.api_key = os.environ.get("OPENAI_API_KEY")
-
-    async def classify(self, conversation: tuple[Message, ...], task: TaskDefinition) -> AdapterResult:
-        if not self.api_key:
-            return AdapterResult(None, error=PredictionError(kind="configuration", message="OPENAI_API_KEY is not set"))
-        messages = [{"role": "system", "content": task.question}, *[m.model_dump(mode="json") for m in conversation]]
-        payload = {
-            **self.parameters,
-            "model": self.model_id,
-            "messages": messages,
-            "response_format": {
-                "type": "json_schema",
-                "json_schema": {
-                    "name": "classification",
-                    "strict": True,
-                    "schema": {
-                        "type": "object",
-                        "properties": {"decision": {"type": "boolean"}},
-                        "required": ["decision"],
-                        "additionalProperties": False,
-                    },
-                },
-            },
-        }
-        try:
-            async with httpx.AsyncClient(timeout=None) as client:
-                response = await client.post(
-                    "https://api.openai.com/v1/chat/completions",
-                    headers={"Authorization": f"Bearer {self.api_key}"},
-                    json=payload,
-                )
-        except httpx.RequestError as exc:
-            return AdapterResult(
-                None, error=PredictionError(kind="provider", message=str(exc), retryable=True)
-            )
-        if response.status_code == 429:
-            return AdapterResult(
-                None, error=PredictionError(kind="rate_limit", message="provider rate limit", retryable=True)
-            )
-        if response.is_error:
-            return AdapterResult(
-                None,
-                error=PredictionError(
-                    kind="provider", message=f"HTTP {response.status_code}", retryable=response.status_code >= 500
-                ),
-            )
-        try:
-            body = response.json()
-            decision_value = json.loads(body["choices"][0]["message"]["content"])["decision"]
-            if not isinstance(decision_value, bool):
-                raise TypeError("decision must be a boolean")
-            usage = body.get("usage", {})
-            return AdapterResult(
-                decision_value,
-                usage=Usage(
-                    input_tokens=usage.get("prompt_tokens", 0),
-                    output_tokens=usage.get("completion_tokens", 0),
-                    provider_fields=usage,
-                ),
-            )
-        except (KeyError, IndexError, TypeError, ValueError) as exc:
-            return AdapterResult(None, error=PredictionError(kind="invalid_response", message=str(exc)))
-
-
-class OpenRouterAdapter(OpenAIAdapter):
-    """OpenRouter's OpenAI-compatible chat-completions API."""
 
     async def classify(self, conversation: tuple[Message, ...], task: TaskDefinition) -> AdapterResult:
         self.api_key = os.environ.get("OPENROUTER_API_KEY")
