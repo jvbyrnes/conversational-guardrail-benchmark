@@ -8,7 +8,6 @@ from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 import httpx
-from pydantic import BaseModel, Field
 
 from guardrail_bench.models import Message, PredictionError, TaskDefinition, Usage
 
@@ -53,6 +52,7 @@ class OpenAIAdapter:
             return AdapterResult(None, error=PredictionError(kind="configuration", message="OPENAI_API_KEY is not set"))
         messages = [{"role": "system", "content": task.question}, *[m.model_dump(mode="json") for m in conversation]]
         payload = {
+            **self.parameters,
             "model": self.model_id,
             "messages": messages,
             "response_format": {
@@ -68,13 +68,17 @@ class OpenAIAdapter:
                     },
                 },
             },
-            **self.parameters,
         }
-        async with httpx.AsyncClient(timeout=None) as client:
-            response = await client.post(
-                "https://api.openai.com/v1/chat/completions",
-                headers={"Authorization": f"Bearer {self.api_key}"},
-                json=payload,
+        try:
+            async with httpx.AsyncClient(timeout=None) as client:
+                response = await client.post(
+                    "https://api.openai.com/v1/chat/completions",
+                    headers={"Authorization": f"Bearer {self.api_key}"},
+                    json=payload,
+                )
+        except httpx.RequestError as exc:
+            return AdapterResult(
+                None, error=PredictionError(kind="provider", message=str(exc), retryable=True)
             )
         if response.status_code == 429:
             return AdapterResult(
@@ -87,19 +91,21 @@ class OpenAIAdapter:
                     kind="provider", message=f"HTTP {response.status_code}", retryable=response.status_code >= 500
                 ),
             )
-        body = response.json()
         try:
-            decision = bool(json.loads(body["choices"][0]["message"]["content"])["decision"])
+            body = response.json()
+            decision_value = json.loads(body["choices"][0]["message"]["content"])["decision"]
+            if not isinstance(decision_value, bool):
+                raise TypeError("decision must be a boolean")
             usage = body.get("usage", {})
             return AdapterResult(
-                decision,
+                decision_value,
                 usage=Usage(
                     input_tokens=usage.get("prompt_tokens", 0),
                     output_tokens=usage.get("completion_tokens", 0),
                     provider_fields=usage,
                 ),
             )
-        except (KeyError, IndexError, TypeError, json.JSONDecodeError) as exc:
+        except (KeyError, IndexError, TypeError, ValueError) as exc:
             return AdapterResult(None, error=PredictionError(kind="invalid_response", message=str(exc)))
 
 
@@ -115,6 +121,7 @@ class OpenRouterAdapter(OpenAIAdapter):
 
         messages = [{"role": "system", "content": task.question}, *[m.model_dump(mode="json") for m in conversation]]
         payload = {
+            **self.parameters,
             "model": self.model_id,
             "messages": messages,
             "response_format": {
@@ -130,15 +137,21 @@ class OpenRouterAdapter(OpenAIAdapter):
                     },
                 },
             },
-            **self.parameters,
         }
         headers = {"Authorization": f"Bearer {self.api_key}"}
         if referer := os.environ.get("OPENROUTER_HTTP_REFERER"):
             headers["HTTP-Referer"] = referer
         if title := os.environ.get("OPENROUTER_APP_TITLE"):
             headers["X-Title"] = title
-        async with httpx.AsyncClient(timeout=None) as client:
-            response = await client.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload)
+        try:
+            async with httpx.AsyncClient(timeout=None) as client:
+                response = await client.post(
+                    "https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload
+                )
+        except httpx.RequestError as exc:
+            return AdapterResult(
+                None, error=PredictionError(kind="provider", message=str(exc), retryable=True)
+            )
         if response.status_code == 429:
             return AdapterResult(
                 None, error=PredictionError(kind="rate_limit", message="provider rate limit", retryable=True)
@@ -150,32 +163,30 @@ class OpenRouterAdapter(OpenAIAdapter):
                     kind="provider", message=f"HTTP {response.status_code}", retryable=response.status_code >= 500
                 ),
             )
-        body = response.json()
         try:
-            decision = bool(json.loads(body["choices"][0]["message"]["content"])["decision"])
+            body = response.json()
+            decision_value = json.loads(body["choices"][0]["message"]["content"])["decision"]
+            if not isinstance(decision_value, bool):
+                raise TypeError("decision must be a boolean")
             usage = body.get("usage", {})
             return AdapterResult(
-                decision,
+                decision_value,
                 usage=Usage(
                     input_tokens=usage.get("prompt_tokens", 0),
                     output_tokens=usage.get("completion_tokens", 0),
                     provider_fields=usage,
                 ),
             )
-        except (KeyError, IndexError, TypeError, json.JSONDecodeError) as exc:
+        except (KeyError, IndexError, TypeError, ValueError) as exc:
             return AdapterResult(None, error=PredictionError(kind="invalid_response", message=str(exc)))
 
 
-class _JevAnswer(BaseModel):
-    decision: bool = Field(description="The answer to the supplied semantic yes-or-no question")
-
-
 class JevAdapter:
-    """TypeSafe Jev adapter using its typed async `adecide` interface.
+    """TypeSafe adapter using the official ``typesafe-sdk`` async client.
 
     Import is deliberately lazy so offline users do not need the optional SDK.
-    The public Jev convenience package currently drops probability and usage data;
-    those fields therefore remain unavailable rather than being inferred.
+    TypeSafe's ``noul`` answer is a probability, which is retained as ``score``
+    and thresholded at 0.5 for the benchmark's Boolean decision.
     """
 
     def __init__(self, adapter_id: str, model_id: str, parameters: dict[str, Any] | None = None) -> None:
@@ -189,16 +200,37 @@ class JevAdapter:
                 None, error=PredictionError(kind="configuration", message="TYPESAFE_API_KEY is not set")
             )
         try:
-            import jev  # type: ignore[import-not-found]
+            from typesafe_sdk import AsyncTypeSafeClient  # type: ignore[import-not-found]
         except ImportError:
-            return AdapterResult(None, error=PredictionError(kind="configuration", message="install the 'jev' package"))
+            return AdapterResult(
+                None,
+                error=PredictionError(kind="configuration", message="install the 'typesafe-sdk' package"),
+            )
         state = {
             "classifier_question": task.question,
             "conversation": [m.model_dump(mode="json") for m in conversation],
         }
         try:
-            answer = await jev.adecide(state, _JevAnswer, model=self.model_id, **self.parameters)
-            return AdapterResult(bool(answer.decision))
+            async with AsyncTypeSafeClient(
+                api_key=os.environ["TYPESAFE_API_KEY"], model=self.model_id
+            ) as client:
+                response = await client.system_one(
+                    state=state,
+                    questions={"decision": {"type": "noul", "instructions": task.question}},
+                    extra_body=self.parameters or None,
+                )
+            answer = response.nouls["decision"]
+            score = float(answer.noul)
+            usage = response.usage
+            return AdapterResult(
+                score >= 0.5,
+                score=score,
+                usage=Usage(
+                    input_tokens=usage.input_tokens,
+                    output_tokens=usage.output_tokens,
+                    provider_fields=usage.model_dump(mode="json"),
+                ),
+            )
         except Exception as exc:
             return AdapterResult(None, error=PredictionError(kind="provider", message=str(exc), retryable=True))
 

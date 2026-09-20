@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -67,6 +68,26 @@ def test_sampling_rejects_too_small_rate() -> None:
 def test_live_revision_must_be_immutable() -> None:
     with pytest.raises(ValidationError, match="40-character"):
         DatasetConfig(name="x", revision="mutable-branch", split="train")
+
+
+def test_wildjailbreak_vanilla_rows_use_the_vanilla_prompt() -> None:
+    examples = fixture_examples()
+    vanilla = next(example for example in examples if example.source_id == "vh-1")
+    assert vanilla.conversation[0].content == "[negative] harmful request without bypass framing"
+
+
+def test_schema_fingerprint_includes_observed_value_types(tmp_path: Path) -> None:
+    def fingerprint(value: object) -> str:
+        path = tmp_path / "fixture.jsonl"
+        path.write_text(
+            json.dumps({"id": "row", "data_type": "vanilla_benign", "vanilla": "a prompt", "extra": value}) + "\n"
+        )
+        config = DatasetConfig(name="fixture", revision="fixture", split="test", fixture_path=path)
+        return load_wildjailbreak(config)[1].schema_fingerprint
+
+    assert fingerprint("a prompt") != fingerprint(["a prompt"])
+    assert fingerprint("a prompt") != fingerprint({"text": "a prompt"})
+    assert fingerprint("a prompt") != fingerprint(1)
 
 
 def prediction(source: str, truth: bool, decision: bool | None, error: bool = False) -> Prediction:

@@ -4,7 +4,10 @@ import asyncio
 import hashlib
 import json
 import subprocess
+from collections import Counter
+from collections.abc import Coroutine
 from datetime import UTC, datetime
+from typing import Any
 
 from guardrail_bench.adapters import (
     FakeAdapter,
@@ -43,12 +46,18 @@ def _git_revision() -> str:
 
 async def run(config: BenchmarkConfig) -> tuple[RunManifest, list[Prediction], AggregateResult]:
     started = datetime.now(UTC)
-    task = get_task(config.task)
-    examples, dataset_metadata = load_wildjailbreak(config.dataset)
-    selected, strata = stratified_sample(examples, task, config.sample.rate, config.sample.seed)
     enabled = [item for item in config.adapters if item.enabled]
     if not enabled:
         raise ValueError("at least one adapter must be enabled")
+    duplicate_ids = sorted(
+        adapter_id for adapter_id, count in Counter(item.id for item in enabled).items() if count > 1
+    )
+    if duplicate_ids:
+        raise ValueError(f"duplicate enabled adapter IDs: {', '.join(duplicate_ids)}")
+
+    task = get_task(config.task)
+    examples, dataset_metadata = load_wildjailbreak(config.dataset)
+    selected, strata = stratified_sample(examples, task, config.sample.rate, config.sample.seed)
     pricing = load_pricing(config.pricing_file)
     identity = json.dumps(
         {
@@ -63,18 +72,16 @@ async def run(config: BenchmarkConfig) -> tuple[RunManifest, list[Prediction], A
         sort_keys=True,
     )
     run_id = f"{started:%Y%m%dT%H%M%SZ}-{hashlib.sha256(identity.encode()).hexdigest()[:12]}"
-    semaphore = asyncio.Semaphore(config.execution.concurrency)
 
     async def classify(adapter: ModelAdapter, example_index: int) -> Prediction:
         example = selected[example_index]
-        async with semaphore:
-            result, latency = await call_with_retry(
-                adapter,
-                example.conversation,
-                task,
-                retries=config.execution.retries,
-                timeout_seconds=config.execution.timeout_seconds,
-            )
+        result, latency = await call_with_retry(
+            adapter,
+            example.conversation,
+            task,
+            retries=config.execution.retries,
+            timeout_seconds=config.execution.timeout_seconds,
+        )
         return Prediction(
             run_id=run_id,
             source_id=example.source_id,
@@ -93,9 +100,16 @@ async def run(config: BenchmarkConfig) -> tuple[RunManifest, list[Prediction], A
         )
 
     adapters = [_adapter(item) for item in enabled]
-    predictions = list(
-        await asyncio.gather(*(classify(adapter, index) for adapter in adapters for index in range(len(selected))))
-    )
+    predictions: list[Prediction] = []
+    pending: list[Coroutine[Any, Any, Prediction]] = []
+    for adapter in adapters:
+        for index in range(len(selected)):
+            pending.append(classify(adapter, index))
+            if len(pending) == config.execution.concurrency:
+                predictions.extend(await asyncio.gather(*pending))
+                pending.clear()
+    if pending:
+        predictions.extend(await asyncio.gather(*pending))
     completed = datetime.now(UTC)
     manifest = RunManifest(
         run_id=run_id,
