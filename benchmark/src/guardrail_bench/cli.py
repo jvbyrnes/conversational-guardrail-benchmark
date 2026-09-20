@@ -14,12 +14,19 @@ def parser() -> argparse.ArgumentParser:
     result.add_argument("--sample-rate", type=float)
     result.add_argument("--seed", type=int)
     result.add_argument("--output-dir", type=Path)
+    result.add_argument("--cost-cap-usd", type=float)
     return result
 
 
 def main() -> None:
     args = parser().parse_args()
-    config = load_config(args.config, rate=args.sample_rate, seed=args.seed, output_dir=args.output_dir)
+    config = load_config(
+        args.config,
+        rate=args.sample_rate,
+        seed=args.seed,
+        output_dir=args.output_dir,
+        cost_cap_usd=args.cost_cap_usd,
+    )
     manifest, _, _ = asyncio.run(run(config))
     print(config.output_dir / manifest.run_id)
 

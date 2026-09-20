@@ -49,7 +49,15 @@ class Usage(StrictModel):
 
 
 class PredictionError(StrictModel):
-    kind: Literal["timeout", "rate_limit", "provider", "invalid_response", "configuration"]
+    kind: Literal[
+        "timeout",
+        "rate_limit",
+        "provider",
+        "invalid_response",
+        "configuration",
+        "cost_cap",
+        "insufficient_funds",
+    ]
     message: str
     retryable: bool = False
 
@@ -106,9 +114,40 @@ class RunManifest(StrictModel):
     run_kind: Literal["exploratory", "publication"]
     models: dict[str, dict[str, Any]]
     pricing_version: str
+    cost_cap_usd: float | None = Field(default=None, gt=0)
+    cost_reserved_usd: float = Field(default=0, ge=0)
+    status: Literal["complete", "incomplete"] = "complete"
+    incomplete_reason: str | None = None
     started_at: datetime
     completed_at: datetime
     wall_clock_duration_ms: float = Field(ge=0)
+
+    @model_validator(mode="after")
+    def incomplete_reason_matches_status(self) -> RunManifest:
+        if (self.status == "incomplete") != (self.incomplete_reason is not None):
+            raise ValueError("incomplete runs require a reason and complete runs must not have one")
+        return self
+
+
+class RunCheckpoint(StrictModel):
+    schema_version: str = SCHEMA_VERSION
+    run_id: str
+    status: Literal["running", "complete", "incomplete"]
+    expected_predictions: int = Field(ge=1)
+    predictions_completed: int = Field(ge=0)
+    started_at: datetime
+    updated_at: datetime
+    reason: str | None = None
+
+    @model_validator(mode="after")
+    def reason_matches_status(self) -> RunCheckpoint:
+        if self.status == "incomplete" and self.reason is None:
+            raise ValueError("incomplete checkpoints require a reason")
+        if self.status != "incomplete" and self.reason is not None:
+            raise ValueError("only incomplete checkpoints may include a reason")
+        if self.predictions_completed > self.expected_predictions:
+            raise ValueError("checkpoint predictions exceed expected count")
+        return self
 
 
 class ConfusionMatrix(StrictModel):

@@ -8,7 +8,7 @@ async function render() {
   const result = await response.json(); const run = result.manifest;
   document.querySelector("#subtitle").textContent = `${run.task_id.replaceAll("_", " ")} · ${run.sample_count.toLocaleString()} examples`;
   const status = document.querySelector("#status");
-  status.innerHTML = `<span class="badge">${run.run_kind.toUpperCase()}</span>${result.potentially_stale ? '<span class="badge stale">POTENTIALLY STALE</span>' : ''}`;
+  status.innerHTML = `<span class="badge">${run.run_kind.toUpperCase()}</span>${run.status === "incomplete" ? '<span class="badge incomplete">INCOMPLETE</span>' : ''}${result.potentially_stale ? '<span class="badge stale">POTENTIALLY STALE</span>' : ''}`;
   const systems = document.querySelector("#systems");
   for (const system of result.systems) {
     const card=document.createElement("article"); card.className="card";
@@ -16,6 +16,6 @@ async function render() {
     systems.append(card);
   }
   const metadata=document.querySelector("#metadata");
-  [["Run ID",run.run_id],["Dataset",run.dataset.name],["Pinned revision",run.dataset.revision],["Split",run.dataset.split],["Schema fingerprint",run.dataset.schema_fingerprint],["Classifier version",run.classifier_version],["Sample rate",String(run.sample_rate)],["Seed",String(run.seed)],["Code revision",run.code_revision],["Pricing version",run.pricing_version],["Started",run.started_at],["Completed",run.completed_at],["Wall-clock duration",`${number(run.wall_clock_duration_ms)} ms`]].forEach(([k,v])=>addMeta(metadata,k,v));
+  [["Run ID",run.run_id],["Run status",run.status ?? "complete"],["Incomplete reason",run.incomplete_reason],["Dataset",run.dataset.name],["Pinned revision",run.dataset.revision],["Split",run.dataset.split],["Schema fingerprint",run.dataset.schema_fingerprint],["Classifier version",run.classifier_version],["Sample rate",String(run.sample_rate)],["Seed",String(run.seed)],["Code revision",run.code_revision],["Pricing version",run.pricing_version],["Cost cap USD",run.cost_cap_usd == null ? null : String(run.cost_cap_usd)],["Reserved cost USD",String(run.cost_reserved_usd ?? 0)],["Started",run.started_at],["Completed",run.completed_at],["Wall-clock duration",`${number(run.wall_clock_duration_ms)} ms`]].filter(([,v])=>v != null).forEach(([k,v])=>addMeta(metadata,k,v));
 }
 render().catch(error => { document.querySelector("#status").textContent=error.message; });

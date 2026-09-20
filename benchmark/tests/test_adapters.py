@@ -1,22 +1,24 @@
 from __future__ import annotations
 
+import asyncio
 import json
+from decimal import Decimal
 from types import SimpleNamespace
 
 import guardrail_bench.adapters as adapters
 import httpx
 import pytest
-from guardrail_bench.models import Message, TaskDefinition
+from guardrail_bench.budget import CostBudget
+from guardrail_bench.models import Message, PredictionError, TaskDefinition, Usage
 
 CONVERSATION = (Message(role="user", content="hello"),)
 TASK = TaskDefinition(task_id="task", version="1", question="Is this harmful?", label_mapping={})
 
 
 class _Response:
-    status_code = 200
-    is_error = False
-
-    def __init__(self, decision: object = False) -> None:
+    def __init__(self, decision: object = False, status_code: int = 200) -> None:
+        self.status_code = status_code
+        self.is_error = status_code >= 400
         self.payload = {
             "choices": [{"message": {"content": json.dumps({"decision": decision})}}],
             "usage": {"prompt_tokens": 2, "completion_tokens": 3},
@@ -103,6 +105,20 @@ async def test_openai_compatible_transport_failures_are_retryable(
 
 
 @pytest.mark.asyncio
+async def test_openrouter_reports_insufficient_funds_without_retry(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+    _Client.calls = []
+    _Client.response = _Response(status_code=402)
+    monkeypatch.setattr(adapters.httpx, "AsyncClient", _Client)
+
+    result = await adapters.OpenRouterAdapter("adapter", "model").classify(CONVERSATION, TASK)
+
+    assert result.error is not None
+    assert result.error.kind == "insufficient_funds"
+    assert result.error.retryable is False
+
+
+@pytest.mark.asyncio
 async def test_jev_adapter_uses_typesafe_sdk(monkeypatch: pytest.MonkeyPatch) -> None:
     class _Client:
         def __init__(self, **kwargs: object) -> None:
@@ -135,3 +151,156 @@ async def test_jev_adapter_uses_typesafe_sdk(monkeypatch: pytest.MonkeyPatch) ->
     assert result.decision is True
     assert result.score == 0.75
     assert result.usage.input_tokens == 4
+
+
+class _CountingAdapter:
+    adapter_id = "paid"
+    model_id = "model"
+
+    def __init__(self, results: list[adapters.AdapterResult]) -> None:
+        self.results = results
+        self.calls = 0
+
+    async def classify(self, conversation: tuple[Message, ...], task: TaskDefinition) -> adapters.AdapterResult:
+        self.calls += 1
+        return self.results[min(self.calls - 1, len(self.results) - 1)]
+
+
+@pytest.mark.asyncio
+async def test_cost_budget_reserves_before_calls_and_does_not_refund_missing_cost() -> None:
+    adapter = _CountingAdapter(
+        [
+            adapters.AdapterResult(False, usage=Usage(provider_fields={"cost": 0.004})),
+            adapters.AdapterResult(False),
+        ]
+    )
+    budget = CostBudget.from_float(0.02)
+
+    first, _ = await budget.call(adapter, CONVERSATION, TASK, 0.01, 1)
+    second, _ = await budget.call(adapter, CONVERSATION, TASK, 0.01, 1)
+    blocked, _ = await budget.call(adapter, CONVERSATION, TASK, 0.01, 1)
+
+    assert first.error is None
+    assert second.error is None
+    assert blocked.error is not None and blocked.error.kind == "cost_cap"
+    assert adapter.calls == 2
+    assert budget.reserved_usd == Decimal("0.02")
+
+
+@pytest.mark.asyncio
+async def test_cost_budget_trips_when_reported_cost_exceeds_reservation() -> None:
+    adapter = _CountingAdapter(
+        [adapters.AdapterResult(False, usage=Usage(provider_fields={"cost": 0.011}))]
+    )
+    budget = CostBudget.from_float(0.03)
+
+    breach, _ = await budget.call(adapter, CONVERSATION, TASK, 0.01, 1)
+    blocked, _ = await budget.call(adapter, CONVERSATION, TASK, 0.01, 1)
+
+    assert breach.error is not None and breach.error.kind == "cost_cap"
+    assert "exceeded" in breach.error.message
+    assert blocked.error is not None and blocked.error.kind == "cost_cap"
+    assert adapter.calls == 1
+
+
+@pytest.mark.asyncio
+async def test_retries_each_require_a_fresh_cost_reservation() -> None:
+    adapter = _CountingAdapter(
+        [
+            adapters.AdapterResult(
+                None,
+                usage=Usage(provider_fields={"cost": 0.001}),
+                error=PredictionError(kind="provider", message="retry", retryable=True),
+            )
+        ]
+    )
+    budget = CostBudget.from_float(0.02)
+
+    result, _ = await adapters.call_with_retry(
+        adapter,
+        CONVERSATION,
+        TASK,
+        retries=2,
+        timeout_seconds=1,
+        budget=budget,
+        cost_reservation_usd=0.01,
+    )
+
+    assert result.error is not None and result.error.kind == "cost_cap"
+    assert adapter.calls == 2
+    assert budget.reserved_usd == Decimal("0.02")
+
+
+@pytest.mark.asyncio
+async def test_insufficient_funds_trips_budget_gate() -> None:
+    adapter = _CountingAdapter(
+        [
+            adapters.AdapterResult(
+                None,
+                error=PredictionError(kind="insufficient_funds", message="no credit"),
+            )
+        ]
+    )
+    budget = CostBudget.from_float(0.03)
+
+    first, _ = await budget.call(adapter, CONVERSATION, TASK, 0.01, 1)
+    blocked, _ = await budget.call(adapter, CONVERSATION, TASK, 0.01, 1)
+
+    assert first.error is not None and first.error.kind == "insufficient_funds"
+    assert blocked.error is not None and blocked.error.kind == "cost_cap"
+    assert adapter.calls == 1
+
+
+@pytest.mark.asyncio
+async def test_budget_gate_wait_is_excluded_from_request_latency() -> None:
+    class SerializedAdapter:
+        adapter_id = "paid"
+        model_id = "model"
+
+        def __init__(self) -> None:
+            self.calls = 0
+            self.first_started = asyncio.Event()
+            self.release_first = asyncio.Event()
+
+        async def classify(
+            self, conversation: tuple[Message, ...], task: TaskDefinition
+        ) -> adapters.AdapterResult:
+            self.calls += 1
+            if self.calls == 1:
+                self.first_started.set()
+                await self.release_first.wait()
+            return adapters.AdapterResult(False, usage=Usage(provider_fields={"cost": 0.001}))
+
+    adapter = SerializedAdapter()
+    budget = CostBudget.from_float(0.02)
+
+    first_task = asyncio.create_task(
+        adapters.call_with_retry(
+            adapter,
+            CONVERSATION,
+            TASK,
+            retries=0,
+            timeout_seconds=1,
+            budget=budget,
+            cost_reservation_usd=0.01,
+        )
+    )
+    await adapter.first_started.wait()
+    second_task = asyncio.create_task(
+        adapters.call_with_retry(
+            adapter,
+            CONVERSATION,
+            TASK,
+            retries=0,
+            timeout_seconds=1,
+            budget=budget,
+            cost_reservation_usd=0.01,
+        )
+    )
+    await asyncio.sleep(0.05)
+    adapter.release_first.set()
+
+    (_, first_latency_ms), (_, second_latency_ms) = await asyncio.gather(first_task, second_task)
+
+    assert first_latency_ms >= 40
+    assert second_latency_ms < 20

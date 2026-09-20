@@ -127,6 +127,45 @@ For each task and system, the system SHALL calculate precision, recall, F1, accu
 - **THEN** classification metrics use non-error predictions only
 - **AND** coverage and errors are reported alongside them
 
+### Requirement: Explicit paid-call cost cap
+
+The system SHALL reject enabled paid adapters without a run-level USD cost cap and conservative per-attempt reservations, and SHALL reserve budget before every initial paid call and retry.
+
+#### Scenario: Paid controls are missing
+
+- **GIVEN** an enabled paid adapter without a cap or reservation
+- **WHEN** a run is requested
+- **THEN** the system rejects it before loading the dataset or making a model call
+
+#### Scenario: Reserved cap is exhausted
+
+- **GIVEN** completed attempts have reserved all remaining budget
+- **WHEN** another paid attempt is considered
+- **THEN** no provider request is made
+- **AND** the skipped prediction has a typed cost-cap error
+
+#### Scenario: Provider billing cannot be trusted
+
+- **WHEN** a provider reports insufficient funds, invalid cost, or cost above the configured reservation
+- **THEN** the system starts no later paid calls
+- **AND** marks the run incomplete
+
+### Requirement: Durable incomplete-run checkpoints
+
+The system SHALL checkpoint completed predictions during execution and explicitly record whether a run is complete or incomplete.
+
+#### Scenario: Cost or provider funds stop a run
+
+- **WHEN** the cost gate or insufficient provider funds prevent remaining requests
+- **THEN** completed predictions remain in a durable partial artifact
+- **AND** final artifacts and run status are marked incomplete with a reason
+
+#### Scenario: Runner is interrupted unexpectedly
+
+- **WHEN** execution stops after one or more predictions complete
+- **THEN** the completed predictions remain readable from the partial artifact
+- **AND** run status is marked incomplete
+
 ### Requirement: Versioned result artifacts
 
 The system SHALL write a run manifest, aggregate JSON, and per-example JSONL/CSV without publishing upstream prompt text by default.

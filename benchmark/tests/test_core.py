@@ -131,6 +131,40 @@ def test_config_round_trip() -> None:
     assert BenchmarkConfig.model_validate_json(config.model_dump_json()) == config
 
 
+def test_paid_adapters_require_cost_cap_and_reservation() -> None:
+    raw = load_config(ROOT / "benchmark/config/fixture.yaml").model_dump(mode="json")
+    raw["adapters"] = [{"id": "paid", "kind": "openrouter", "model": "provider/model"}]
+
+    with pytest.raises(ValidationError, match="cost_cap_usd is required"):
+        BenchmarkConfig.model_validate(raw)
+
+    raw["execution"]["cost_cap_usd"] = 0.1
+    with pytest.raises(ValidationError, match="cost_reservation_usd is required"):
+        BenchmarkConfig.model_validate(raw)
+
+
+def test_cost_cap_covers_one_fully_retried_attempt_per_paid_adapter() -> None:
+    raw = load_config(ROOT / "benchmark/config/fixture.yaml").model_dump(mode="json")
+    raw["adapters"] = [
+        {
+            "id": "paid",
+            "kind": "openrouter",
+            "model": "provider/model",
+            "cost_reservation_usd": 0.02,
+        }
+    ]
+    raw["execution"].update({"retries": 2, "cost_cap_usd": 0.05})
+
+    with pytest.raises(ValidationError, match="must be at least 0.06"):
+        BenchmarkConfig.model_validate(raw)
+
+
+def test_cost_cap_cli_override_is_applied_before_validation() -> None:
+    raw_path = ROOT / "benchmark/config/live.example.yaml"
+    config = load_config(raw_path, cost_cap_usd=0.75)
+    assert config.execution.cost_cap_usd == 0.75
+
+
 @pytest.mark.asyncio
 async def test_openrouter_requires_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import importlib
 import json
 from datetime import UTC, datetime
 from typing import Any
@@ -48,7 +49,7 @@ def load_wildjailbreak(config: DatasetConfig) -> tuple[list[SourceExample], Data
         rows = [json.loads(line) for line in config.fixture_path.read_text().splitlines() if line.strip()]
     else:
         try:
-            from datasets import load_dataset  # type: ignore[import-not-found]
+            load_dataset = importlib.import_module("datasets").load_dataset
         except ImportError as exc:
             raise RuntimeError("install the 'dataset' extra to load WildJailbreak") from exc
         dataset = load_dataset(config.name, config.config_name, split=config.split, revision=config.revision)

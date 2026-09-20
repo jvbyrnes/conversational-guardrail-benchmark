@@ -56,9 +56,13 @@ For Jev, convert the same semantic question into the supported typed boolean/pro
 
 The engine resolves configuration, prepares the deterministic sample once, and sends the identical selected examples to all enabled adapters. Concurrency and retries are bounded and configurable. Failed calls remain explicit errors.
 
+Every enabled paid adapter requires a conservative per-attempt USD reservation and the run requires a USD cost cap. The engine atomically reserves before every initial call and retry, never refunds reservations, and serializes paid attempts through the budget gate so a provider-reported overage or insufficient-funds response stops later requests. The configured cap must fund one fully retried attempt for every enabled paid adapter. A matching provider-side key limit remains necessary because a local gate cannot reverse a provider charge that exceeds its declared reservation.
+
 ### Artifact writer
 
 Each run receives a stable run ID and directory. Schemas are versioned. Public artifacts omit conversation text by default and include source IDs, labels, predictions, scores, timings, usage, and costs.
+
+The writer creates a versioned run-status checkpoint before adapter execution and durably appends each completed prediction to a partial JSONL file. Cap exhaustion, insufficient provider funds, or an unexpected interruption leaves completed predictions recoverable. Cap- and funds-stopped final artifacts are explicitly marked incomplete with a reason.
 
 ## Configuration
 
@@ -106,6 +110,7 @@ This change records immutable revisions and allows the site to consume current-r
 - Adapter contract tests using fakes.
 - Offline end-to-end fixture producing site-consumable artifacts.
 - No paid or network calls in the default test suite.
+- Offline tests for cap preflight, retry reservations, overage/funds fail-fast behavior, and incomplete-run checkpoint recovery.
 
 ## Open Decisions Deferred to Implementation Review
 

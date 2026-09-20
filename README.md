@@ -50,7 +50,24 @@ gated-repository read access as `HF_TOKEN` instead. Enable only the model adapte
 intend to pay for. The example is pinned to a verified immutable upstream revision
 and uses the `train` configuration. The runner rejects mutable revisions before model
 calls. Use `--sample-rate 0.01` for an exploratory run or `--sample-rate 1.0` for a
-publication run.
+publication run. A live run also requires both `execution.cost_cap_usd` and a
+`cost_reservation_usd` on every enabled paid adapter; the runner rejects missing or
+undersized controls before loading data or making model calls. The cap may be
+overridden explicitly with `--cost-cap-usd`.
+
+Every initial paid call and retry atomically consumes its full configured reservation
+before the request starts. Reservations are deliberately not refunded, including when
+a provider omits billed cost, so missing billing metadata cannot reopen budget. Paid
+calls pass through one gate: cap exhaustion, an HTTP 402/recognizable insufficient-
+credit response, invalid reported cost, or a reported charge above its reservation
+prevents later provider requests. Select a conservative reservation from current
+pricing, maximum input size, output-token limits, and any provider extras.
+
+This process-local cap controls which calls the runner admits; it cannot undo a single
+provider charge that violates the configured reservation. Use a dedicated provider key
+with a matching provider-side spending limit as the external hard stop. The checked-in
+values are examples to review, not price guarantees. No live smoke test has been run as
+part of the offline implementation.
 
 Secrets are read only from the environment:
 
@@ -81,6 +98,8 @@ Do not put secrets in YAML. `.env` is ignored, but the runner does not load it i
 - **Jev integration:** the adapter uses Jev's typed `adecide` contract and preserves unavailable probability/usage fields as absent/zero rather than inventing them. The optional import is lazy so the offline suite remains dependency-free. Jev's package support changes independently, so a minimal paid smoke test is required after installing a compatible release.
 - **LLM baseline:** OpenRouter's OpenAI-compatible Chat Completions API is the sole general-purpose baseline. The semantic task question is passed unchanged as the system instruction; only provider serialization differs.
 - **Errors and cost:** exhausted errors remain typed records and are excluded from classification metrics. Coverage exposes their impact. Unknown model pricing produces a zero estimate; raw token usage is retained so costs can be recomputed after adding a versioned price.
+- **Live cost gate:** paid adapters require a run cap and conservative per-attempt reservations. The cap must cover one fully retried attempt for every enabled paid adapter, every retry reserves again, and reservations are never refunded. Provider-reported overages and insufficient-funds responses stop later paid calls and mark the run incomplete.
+- **Durable interruption state:** the runner creates `run-status.json` before adapter execution and fsyncs each completed prediction to `predictions.partial.jsonl`. Normal artifacts are still written for cap- or funds-stopped runs, but both their manifest and checkpoint are marked `incomplete` with a reason. An unexpected interruption leaves the already-checkpointed predictions available for diagnosis.
 - **Publication:** `rate == 1.0` alone marks a publication run, matching the OpenSpec decision. The static site never launches evaluations and only reads checked-in artifacts.
 
 ## Terminology and implementation details
@@ -88,7 +107,7 @@ Do not put secrets in YAML. `.env` is ignored, but the runner does not load it i
 - **Versioned schemas** are the Pydantic contracts for benchmark configuration,
   predictions, manifests, and aggregate result files. They are not a dataset schema;
   `schema_version` lets readers reject incompatible artifact formats.
-- **CLI overrides** are limited to `--sample-rate`, `--seed`, and `--output-dir`.
+- **CLI overrides** are limited to `--sample-rate`, `--seed`, `--output-dir`, and `--cost-cap-usd`.
   They override those YAML values without changing the checked-in configuration.
 - **Immutable live-revision validation** requires a live Hugging Face revision to be
   a full 40-character commit SHA rather than a movable branch or tag. Fixture files
@@ -115,6 +134,10 @@ Do not put secrets in YAML. `.env` is ignored, but the runner does not load it i
 - **Cost estimation** multiplies provider-reported input and output token counts by
   the versioned per-million-token prices, then sums predictions. Unknown prices yield
   zero rather than a fabricated estimate, while retaining raw usage.
+- **Cost reservations versus estimates:** reservations are conservative dispatch
+  accounting and are recorded separately from provider-reported prediction cost. They
+  are not substituted for missing provider cost, so aggregate cost remains evidence-
+  based while the gate remains fail-closed.
 - **Exploratory versus publication** is determined solely by sampling: any partial
   sample is exploratory and only a 100% sample is publication. The site highlights
   exploratory artifacts and marks results potentially stale when a supplied current

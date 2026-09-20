@@ -7,7 +7,7 @@ import subprocess
 from collections import Counter
 from collections.abc import Coroutine
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Literal
 
 from guardrail_bench.adapters import (
     FakeAdapter,
@@ -16,7 +16,8 @@ from guardrail_bench.adapters import (
     OpenRouterAdapter,
     call_with_retry,
 )
-from guardrail_bench.artifacts import write_artifacts
+from guardrail_bench.artifacts import append_checkpoint, create_checkpoint, finish_checkpoint, write_artifacts
+from guardrail_bench.budget import CostBudget
 from guardrail_bench.config import AdapterConfig, BenchmarkConfig
 from guardrail_bench.dataset import load_wildjailbreak
 from guardrail_bench.metrics import aggregate
@@ -52,6 +53,11 @@ async def run(config: BenchmarkConfig) -> tuple[RunManifest, list[Prediction], A
     )
     if duplicate_ids:
         raise ValueError(f"duplicate enabled adapter IDs: {', '.join(duplicate_ids)}")
+    budget = (
+        CostBudget.from_float(config.execution.cost_cap_usd)
+        if config.execution.cost_cap_usd is not None
+        else None
+    )
 
     task = get_task(config.task)
     examples, dataset_metadata = load_wildjailbreak(config.dataset)
@@ -64,13 +70,15 @@ async def run(config: BenchmarkConfig) -> tuple[RunManifest, list[Prediction], A
             "rate": config.sample.rate,
             "seed": config.sample.seed,
             "sources": [e.source_id for e in selected],
-            "models": [(a.id, a.model, a.parameters) for a in enabled],
+            "models": [(a.id, a.model, a.parameters, a.cost_reservation_usd) for a in enabled],
+            "cost_cap_usd": config.execution.cost_cap_usd,
         },
         sort_keys=True,
     )
     run_id = f"{started:%Y%m%dT%H%M%SZ}-{hashlib.sha256(identity.encode()).hexdigest()[:12]}"
+    run_directory = config.output_dir / run_id
 
-    async def classify(adapter: ModelAdapter, example_index: int) -> Prediction:
+    async def classify(adapter: ModelAdapter, adapter_config: AdapterConfig, example_index: int) -> Prediction:
         example = selected[example_index]
         result, latency = await call_with_retry(
             adapter,
@@ -78,6 +86,8 @@ async def run(config: BenchmarkConfig) -> tuple[RunManifest, list[Prediction], A
             task,
             retries=config.execution.retries,
             timeout_seconds=config.execution.timeout_seconds,
+            budget=budget if adapter_config.kind != "fake" else None,
+            cost_reservation_usd=adapter_config.cost_reservation_usd,
         )
         return Prediction(
             run_id=run_id,
@@ -96,18 +106,55 @@ async def run(config: BenchmarkConfig) -> tuple[RunManifest, list[Prediction], A
             error=result.error,
         )
 
-    adapters = [_adapter(item) for item in enabled]
+    adapters = [(_adapter(item), item) for item in enabled]
+    expected_predictions = len(selected) * len(adapters)
+    create_checkpoint(run_directory, run_id, expected_predictions, started)
+    checkpoint_lock = asyncio.Lock()
+
+    async def classify_and_checkpoint(
+        adapter: ModelAdapter, adapter_config: AdapterConfig, example_index: int
+    ) -> Prediction:
+        prediction = await classify(adapter, adapter_config, example_index)
+        async with checkpoint_lock:
+            append_checkpoint(run_directory, [prediction], expected_predictions)
+        return prediction
+
     predictions: list[Prediction] = []
     pending: list[Coroutine[Any, Any, Prediction]] = []
-    for adapter in adapters:
+    try:
         for index in range(len(selected)):
-            pending.append(classify(adapter, index))
-            if len(pending) == config.execution.concurrency:
-                predictions.extend(await asyncio.gather(*pending))
-                pending.clear()
-    if pending:
-        predictions.extend(await asyncio.gather(*pending))
+            for adapter, adapter_config in adapters:
+                pending.append(classify_and_checkpoint(adapter, adapter_config, index))
+                if len(pending) == config.execution.concurrency:
+                    completed_batch = list(await asyncio.gather(*pending))
+                    predictions.extend(completed_batch)
+                    pending.clear()
+        if pending:
+            completed_batch = list(await asyncio.gather(*pending))
+            predictions.extend(completed_batch)
+    except BaseException as exc:
+        finish_checkpoint(
+            run_directory,
+            status="incomplete",
+            reason=f"run interrupted by {type(exc).__name__}",
+        )
+        raise
     completed = datetime.now(UTC)
+    blocking_errors = [
+        prediction.error
+        for prediction in predictions
+        if prediction.error is not None and prediction.error.kind in {"cost_cap", "insufficient_funds"}
+    ]
+    insufficient_funds = next(
+        (error for error in blocking_errors if error.kind == "insufficient_funds"),
+        None,
+    )
+    incomplete_reason = (
+        insufficient_funds.message
+        if insufficient_funds is not None
+        else blocking_errors[0].message if blocking_errors else None
+    )
+    status: Literal["complete", "incomplete"] = "incomplete" if incomplete_reason is not None else "complete"
     manifest = RunManifest(
         run_id=run_id,
         code_revision=_git_revision(),
@@ -119,8 +166,20 @@ async def run(config: BenchmarkConfig) -> tuple[RunManifest, list[Prediction], A
         seed=config.sample.seed,
         strata=strata,
         run_kind="publication" if config.sample.rate == 1 else "exploratory",
-        models={item.id: {"kind": item.kind, "model": item.model, "parameters": item.parameters} for item in enabled},
-        pricing_version="provider-reported",
+        models={
+            item.id: {
+                "kind": item.kind,
+                "model": item.model,
+                "parameters": item.parameters,
+                "cost_reservation_usd": item.cost_reservation_usd,
+            }
+            for item in enabled
+        },
+        pricing_version="provider-reported+reservation-v1",
+        cost_cap_usd=config.execution.cost_cap_usd,
+        cost_reserved_usd=float(budget.reserved_usd) if budget is not None else 0,
+        status=status,
+        incomplete_reason=incomplete_reason,
         started_at=started,
         completed_at=completed,
         wall_clock_duration_ms=(completed - started).total_seconds() * 1000,
@@ -132,5 +191,6 @@ async def run(config: BenchmarkConfig) -> tuple[RunManifest, list[Prediction], A
             config.dataset.current_revision is not None and config.dataset.current_revision != config.dataset.revision
         ),
     )
-    write_artifacts(config.output_dir / run_id, manifest, predictions, result)
+    write_artifacts(run_directory, manifest, predictions, result)
+    finish_checkpoint(run_directory, status=status, reason=incomplete_reason)
     return manifest, predictions, result
