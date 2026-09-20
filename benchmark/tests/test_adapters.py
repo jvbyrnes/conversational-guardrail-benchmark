@@ -49,12 +49,12 @@ class _Client:
 
 @pytest.mark.parametrize(
     ("adapter_type", "api_key"),
-    [(adapters.OpenAIAdapter, "OPENAI_API_KEY"), (adapters.OpenRouterAdapter, "OPENROUTER_API_KEY")],
+    [(adapters.OpenRouterAdapter, "OPENROUTER_API_KEY")],
 )
 @pytest.mark.asyncio
 async def test_openai_compatible_adapters_protect_payload_and_reject_non_boolean(
     monkeypatch: pytest.MonkeyPatch,
-    adapter_type: type[adapters.OpenAIAdapter],
+    adapter_type: type[adapters.OpenRouterAdapter],
     api_key: str,
 ) -> None:
     monkeypatch.setenv(api_key, "test-key")
@@ -81,12 +81,12 @@ async def test_openai_compatible_adapters_protect_payload_and_reject_non_boolean
 
 @pytest.mark.parametrize(
     ("adapter_type", "api_key"),
-    [(adapters.OpenAIAdapter, "OPENAI_API_KEY"), (adapters.OpenRouterAdapter, "OPENROUTER_API_KEY")],
+    [(adapters.OpenRouterAdapter, "OPENROUTER_API_KEY")],
 )
 @pytest.mark.asyncio
 async def test_openai_compatible_transport_failures_are_retryable(
     monkeypatch: pytest.MonkeyPatch,
-    adapter_type: type[adapters.OpenAIAdapter],
+    adapter_type: type[adapters.OpenRouterAdapter],
     api_key: str,
 ) -> None:
     monkeypatch.setenv(api_key, "test-key")

@@ -43,7 +43,6 @@ Secrets are read only from the environment:
 
 - `TYPESAFE_API_KEY` for TypeSafe AI Jev;
 - `OPENROUTER_API_KEY` for the default OpenRouter baseline;
-- `OPENAI_API_KEY` if an adapter with `kind: openai` is used directly.
 
 OpenRouter uses its OpenAI-compatible chat-completions endpoint. Model names retain
 their OpenRouter provider prefix (for example, `openai/gpt-4.1-mini`). The optional
@@ -60,7 +59,7 @@ Do not put secrets in YAML. `.env` is ignored, but the runner does not load it i
 - **Upstream normalization:** the adapter accepts the documented/common label fields (`data_type`, `label`, or `source_label`), stable IDs when present, and either a message-list conversation or a prompt field. It fingerprints the observed source columns and fails closed on an unknown label or missing prompt.
 - **Sampling:** each stratum receives `floor(size × rate)` rows. A run is rejected instead of silently rounding an empty stratum up to one, so the configured rate remains honest.
 - **Jev integration:** the adapter uses Jev's typed `adecide` contract and preserves unavailable probability/usage fields as absent/zero rather than inventing them. The optional import is lazy so the offline suite remains dependency-free. Jev's package support changes independently, so a minimal paid smoke test is required after installing a compatible release.
-- **LLM baseline:** OpenAI Chat Completions strict JSON Schema was selected as the first general-purpose baseline. The semantic task question is passed unchanged as the system instruction; only provider serialization differs.
+- **LLM baseline:** OpenRouter's OpenAI-compatible Chat Completions API is the sole general-purpose baseline. The semantic task question is passed unchanged as the system instruction; only provider serialization differs.
 - **Errors and cost:** exhausted errors remain typed records and are excluded from classification metrics. Coverage exposes their impact. Unknown model pricing produces a zero estimate; raw token usage is retained so costs can be recomputed after adding a versioned price.
 - **Publication:** `rate == 1.0` alone marks a publication run, matching the OpenSpec decision. The static site never launches evaluations and only reads checked-in artifacts.
 

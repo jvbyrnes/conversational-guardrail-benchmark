@@ -35,7 +35,7 @@ class SampleConfig(ConfigModel):
 
 class AdapterConfig(ConfigModel):
     id: str
-    kind: Literal["fake", "jev", "openai", "openrouter"]
+    kind: Literal["fake", "jev", "openrouter"]
     model: str
     enabled: bool = True
     parameters: dict[str, Any] = Field(default_factory=dict)
