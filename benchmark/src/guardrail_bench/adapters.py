@@ -44,7 +44,7 @@ class PaidCallBudget(Protocol):
         task: TaskDefinition,
         reservation_usd: float,
         timeout_seconds: float,
-    ) -> AdapterResult: ...
+    ) -> tuple[AdapterResult, float]: ...
 
 
 class FakeAdapter:
@@ -212,29 +212,34 @@ async def call_with_retry(
     budget: PaidCallBudget | None = None,
     cost_reservation_usd: float | None = None,
 ) -> tuple[AdapterResult, float]:
-    started = time.perf_counter()
     result: AdapterResult | None = None
+    request_latency_ms = 0.0
     for attempt in range(retries + 1):
-        try:
-            if budget is None:
+        if budget is None:
+            attempt_started = time.perf_counter()
+            try:
                 result = await asyncio.wait_for(adapter.classify(conversation, task), timeout_seconds)
-            else:
-                if cost_reservation_usd is None:
-                    raise ValueError("paid calls require a cost reservation")
-                result = await budget.call(
-                    adapter,
-                    conversation,
-                    task,
-                    cost_reservation_usd,
-                    timeout_seconds,
+            except TimeoutError:
+                result = AdapterResult(
+                    None,
+                    error=PredictionError(
+                        kind="timeout", message=f"timed out after {timeout_seconds}s", retryable=True
+                    ),
                 )
-        except TimeoutError:
-            result = AdapterResult(
-                None,
-                error=PredictionError(kind="timeout", message=f"timed out after {timeout_seconds}s", retryable=True),
+            request_latency_ms += (time.perf_counter() - attempt_started) * 1000
+        else:
+            if cost_reservation_usd is None:
+                raise ValueError("paid calls require a cost reservation")
+            result, attempt_latency_ms = await budget.call(
+                adapter,
+                conversation,
+                task,
+                cost_reservation_usd,
+                timeout_seconds,
             )
+            request_latency_ms += attempt_latency_ms
         if result.error is None or not result.error.retryable or attempt == retries:
             break
         await asyncio.sleep(min(0.1 * (2**attempt), 1.0))
     assert result is not None
-    return result, (time.perf_counter() - started) * 1000
+    return result, request_latency_ms

@@ -152,6 +152,50 @@ async def test_runner_stops_after_provider_reports_insufficient_funds(
 
 
 @pytest.mark.asyncio
+async def test_malformed_provider_cost_still_writes_incomplete_artifacts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    class MalformedCostAdapter:
+        adapter_id = "paid"
+        model_id = "provider/model"
+
+        def __init__(self) -> None:
+            self.calls = 0
+
+        async def classify(self, conversation: tuple[Message, ...], task: TaskDefinition) -> AdapterResult:
+            self.calls += 1
+            return AdapterResult(
+                False,
+                usage=Usage(provider_fields={"cost": "not-a-number", "request_id": "offline-fixture"}),
+            )
+
+    adapter = MalformedCostAdapter()
+    raw = load_config(ROOT / "benchmark/config/fixture.yaml", output_dir=tmp_path).model_dump(mode="json")
+    raw["adapters"] = [
+        {
+            "id": "paid",
+            "kind": "openrouter",
+            "model": "provider/model",
+            "cost_reservation_usd": 0.01,
+        }
+    ]
+    raw["execution"].update({"retries": 0, "cost_cap_usd": 0.08})
+    config = BenchmarkConfig.model_validate(raw)
+    monkeypatch.setattr(runner, "_adapter", lambda _: adapter)
+
+    manifest, predictions, aggregate = await run(config)
+
+    assert adapter.calls == 1
+    assert manifest.status == "incomplete"
+    assert predictions[0].error is not None and predictions[0].error.kind == "cost_cap"
+    assert predictions[0].estimated_cost_usd == 0
+    assert predictions[0].usage.provider_fields == {"request_id": "offline-fixture"}
+    directory = tmp_path / manifest.run_id
+    assert AggregateResult.model_validate_json((directory / "aggregate.json").read_text()) == aggregate
+    assert len((directory / "predictions.partial.jsonl").read_text().splitlines()) == len(predictions)
+
+
+@pytest.mark.asyncio
 async def test_interrupted_run_keeps_completed_prediction_checkpoint(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

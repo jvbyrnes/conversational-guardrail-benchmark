@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import math
+import time
 from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
 
@@ -52,39 +53,70 @@ class CostBudget:
         task: TaskDefinition,
         reservation_usd: float,
         timeout_seconds: float,
-    ) -> AdapterResult:
+    ) -> tuple[AdapterResult, float]:
         reservation = Decimal(str(reservation_usd))
         async with self._gate:
             if self._breach is not None:
-                return self._error(self._breach)
+                return self._error(self._breach), 0.0
             remaining = self.cap_usd - self.reserved_usd
             if reservation > remaining:
-                return self._error(
-                    f"cost cap exhausted: {remaining} USD remains but this attempt requires "
-                    f"a {reservation} USD reservation"
+                return (
+                    self._error(
+                        f"cost cap exhausted: {remaining} USD remains but this attempt requires "
+                        f"a {reservation} USD reservation"
+                    ),
+                    0.0,
                 )
             self.reserved_usd += reservation
-            result = await asyncio.wait_for(adapter.classify(conversation, task), timeout_seconds)
+            request_started = time.perf_counter()
+            try:
+                result = await asyncio.wait_for(adapter.classify(conversation, task), timeout_seconds)
+            except TimeoutError:
+                latency_ms = (time.perf_counter() - request_started) * 1000
+                return (
+                    AdapterResult(
+                        None,
+                        error=PredictionError(
+                            kind="timeout", message=f"timed out after {timeout_seconds}s", retryable=True
+                        ),
+                    ),
+                    latency_ms,
+                )
+            latency_ms = (time.perf_counter() - request_started) * 1000
             if result.error is not None and result.error.kind == "insufficient_funds":
                 self._breach = "provider reported insufficient funds; no further paid calls were started"
-                return result
+                return result, latency_ms
             try:
                 reported = _reported_cost(result)
             except ValueError as exc:
                 self._breach = str(exc)
-                return self._error(self._breach, result)
+                return self._error(self._breach, result, sanitize_reported_cost=True), latency_ms
             if reported is not None and reported > reservation:
                 self._breach = (
                     f"provider-reported cost {reported} USD exceeded the configured "
                     f"{reservation} USD reservation; no further paid calls were started"
                 )
-                return self._error(self._breach, result)
-            return result
+                return self._error(self._breach, result), latency_ms
+            return result, latency_ms
 
     @staticmethod
-    def _error(message: str, result: AdapterResult | None = None) -> AdapterResult:
+    def _error(
+        message: str,
+        result: AdapterResult | None = None,
+        *,
+        sanitize_reported_cost: bool = False,
+    ) -> AdapterResult:
+        usage = result.usage if result is not None else Usage()
+        if sanitize_reported_cost:
+            usage = usage.model_copy(
+                update={
+                    "provider_fields": {
+                        key: value for key, value in usage.provider_fields.items() if key != "cost"
+                    }
+                }
+            )
         return AdapterResult(
             None,
-            usage=result.usage if result is not None else Usage(),
+            usage=usage,
             error=PredictionError(kind="cost_cap", message=message),
         )
