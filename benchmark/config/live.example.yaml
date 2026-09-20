@@ -14,27 +14,38 @@ adapters:
   - id: jev
     kind: jev
     model: system-one
+    # Conservative maximum expected charge for one attempt, including input and output.
+    cost_reservation_usd: 0.05
   # Structured-output-capable OpenAI tiers (catalog checked 2026-09-20).
   - id: openai-luna
     kind: openrouter
     model: openai/gpt-5.6-luna
+    cost_reservation_usd: 0.05
   # - id: openai-terra
   #   kind: openrouter
   #   model: openai/gpt-5.6-terra
+  #   cost_reservation_usd: 0.05
   # - id: openai-sol
   #   kind: openrouter
   #   model: openai/gpt-5.6-sol
+  #   cost_reservation_usd: 0.05
   # Structured-output-capable Anthropic tiers (catalog checked 2026-09-20).
   # - id: anthropic-haiku
   #   kind: openrouter
   #   model: anthropic/claude-haiku-4.5
+  #   cost_reservation_usd: 0.05
   # - id: anthropic-sonnet
   #   kind: openrouter
   #   model: anthropic/claude-sonnet-4.6
+  #   cost_reservation_usd: 0.05
   # - id: anthropic-opus
   #   kind: openrouter
   #   model: anthropic/claude-opus-4.6
+  #   cost_reservation_usd: 0.05
 execution:
   concurrency: 4
   retries: 2
   timeout_seconds: 30
+  # Required whenever a non-fake adapter is enabled. Review both values against
+  # current provider pricing and enforce a matching provider-side key budget.
+  cost_cap_usd: 0.50

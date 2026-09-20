@@ -8,4 +8,5 @@ def test_static_site_contract() -> None:
     assert 'id="systems"' in html and 'id="metadata"' in html
     assert "aggregate.json" in script
     assert "POTENTIALLY STALE" in script
+    assert "INCOMPLETE" in script and "incomplete_reason" in script
     assert "run_kind" in script and "sample_count" in script
