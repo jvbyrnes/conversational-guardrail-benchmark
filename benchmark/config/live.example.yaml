@@ -1,0 +1,23 @@
+# Replace revision with the full commit SHA verified from the WildJailbreak dataset page.
+# No mutable branch/tag is accepted by configuration validation.
+dataset:
+  name: allenai/wildjailbreak
+  revision: "0000000000000000000000000000000000000000"
+  split: train
+task: harmful_jailbreak
+sample:
+  rate: 0.05
+  seed: 20260918
+adapters:
+  - id: jev
+    kind: jev
+    model: system-one
+  - id: openrouter
+    kind: openrouter
+    model: openai/gpt-4.1-mini
+    parameters:
+      temperature: 0
+execution:
+  concurrency: 4
+  retries: 2
+  timeout_seconds: 30

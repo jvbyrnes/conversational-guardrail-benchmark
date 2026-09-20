@@ -1,0 +1,14 @@
+version: "2026-09-19"
+models:
+  deterministic-fake-v1:
+    input_per_million_usd: 0
+    output_per_million_usd: 0
+  gpt-4.1-mini:
+    input_per_million_usd: 0.40
+    output_per_million_usd: 1.60
+  openai/gpt-4.1-mini:
+    input_per_million_usd: 0.40
+    output_per_million_usd: 1.60
+  system-one:
+    input_per_million_usd: 0
+    output_per_million_usd: 0
