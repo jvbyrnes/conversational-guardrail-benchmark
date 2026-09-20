@@ -37,12 +37,27 @@ python -m http.server 8000
 # open http://localhost:8000/site/
 ```
 
-For a live run, copy `benchmark/config/live.example.yaml`, replace the deliberately invalid placeholder with a full 40-character WildJailbreak commit SHA, select the verified upstream config/split, and enable only the adapters you intend to pay for. The runner rejects mutable revisions before model calls. Use `--sample-rate 0.01` for an exploratory run or `--sample-rate 1.0` for a publication run.
+For a live run, copy `benchmark/config/live.example.yaml`, accept the WildJailbreak
+dataset's AI2 Responsible Use Guidelines on Hugging Face, then authenticate locally:
+
+```bash
+hf auth login
+```
+
+The Hugging Face libraries automatically use the credential stored by that command.
+For ephemeral or CI environments, provide a fine-grained User Access Token with
+gated-repository read access as `HF_TOKEN` instead. Enable only the model adapters you
+intend to pay for. The example is pinned to a verified immutable upstream revision
+and uses the `train` configuration. The runner rejects mutable revisions before model
+calls. Use `--sample-rate 0.01` for an exploratory run or `--sample-rate 1.0` for a
+publication run.
 
 Secrets are read only from the environment:
 
 - `TYPESAFE_API_KEY` for TypeSafe AI Jev;
 - `OPENROUTER_API_KEY` for the default OpenRouter baseline;
+- `HF_TOKEN` for the gated WildJailbreak dataset in ephemeral or CI environments;
+  local development can use the credential stored by `hf auth login` instead.
 
 OpenRouter uses its OpenAI-compatible chat-completions endpoint. Model names retain
 their OpenRouter provider prefix (for example, `openai/gpt-4.1-mini`). The optional
@@ -55,7 +70,12 @@ Do not put secrets in YAML. `.env` is ignored, but the runner does not load it i
 
 ## Implementation decisions
 
-- **Upstream pin:** this environment could not reach Hugging Face to verify the current repository commit or live schema. Rather than invent a pin, the checked-in live configuration contains a conspicuous invalid placeholder and validation requires callers to supply a full commit SHA. Fixture runs use the immutable local revision `fixture-v1`.
+- **Upstream pin:** the live configuration pins WildJailbreak commit
+  `5ddc12a7894f842b0619b8e1c7ee496b198af009`, verified with its documented `train`
+  configuration on 2026-09-20. The dataset is gated, so live loading additionally
+  requires accepting the AI2 Responsible Use Guidelines and authenticating through
+  `hf auth login` or `HF_TOKEN`. Fixture runs use the immutable local revision
+  `fixture-v1`.
 - **Upstream normalization:** the adapter accepts the documented/common label fields (`data_type`, `label`, or `source_label`), stable IDs when present, and either a message-list conversation or a prompt field. It fingerprints the observed source columns and fails closed on an unknown label or missing prompt.
 - **Sampling:** each stratum receives `floor(size × rate)` rows. A run is rejected instead of silently rounding an empty stratum up to one, so the configured rate remains honest.
 - **Jev integration:** the adapter uses Jev's typed `adecide` contract and preserves unavailable probability/usage fields as absent/zero rather than inventing them. The optional import is lazy so the offline suite remains dependency-free. Jev's package support changes independently, so a minimal paid smoke test is required after installing a compatible release.

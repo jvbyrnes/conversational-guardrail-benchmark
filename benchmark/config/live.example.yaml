@@ -1,8 +1,10 @@
-# Replace revision with the full commit SHA verified from the WildJailbreak dataset page.
-# No mutable branch/tag is accepted by configuration validation.
+# Pinned to the immutable WildJailbreak revision verified on 2026-09-20.
+# Access requires accepting the dataset's AI2 Responsible Use Guidelines on Hugging Face
+# and authenticating with `hf auth login` (or providing the same credential as HF_TOKEN).
 dataset:
   name: allenai/wildjailbreak
-  revision: "0000000000000000000000000000000000000000"
+  revision: "5ddc12a7894f842b0619b8e1c7ee496b198af009"
+  config_name: train
   split: train
 task: harmful_jailbreak
 sample:
