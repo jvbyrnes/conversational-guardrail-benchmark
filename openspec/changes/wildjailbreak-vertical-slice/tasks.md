@@ -17,7 +17,7 @@
 
 ## 3. WildJailbreak Integration
 
-- [ ] 3.1 Inspect the upstream dataset release and select an immutable revision and exact split/configuration
+- [x] 3.1 Inspect the upstream dataset release and select an immutable revision and exact split/configuration
 - [x] 3.2 Implement the dataset adapter and upstream schema validation
 - [x] 3.3 Implement both explicit source-label mappings
 - [x] 3.4 Add small synthetic or license-compatible fixtures covering all four classes

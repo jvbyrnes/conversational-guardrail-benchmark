@@ -104,6 +104,26 @@ def test_wildjailbreak_vanilla_rows_use_the_vanilla_prompt() -> None:
     assert vanilla.conversation[0].content == "[negative] harmful request without bypass framing"
 
 
+def test_wildjailbreak_falls_back_when_labeled_prompt_column_is_empty(tmp_path: Path) -> None:
+    path = tmp_path / "fallback.jsonl"
+    path.write_text(
+        json.dumps(
+            {
+                "id": "fallback",
+                "data_type": "adversarial_benign",
+                "vanilla": "usable prompt",
+                "adversarial": "",
+            }
+        )
+        + "\n"
+    )
+    config = DatasetConfig(name="fixture", revision="fixture", split="test", fixture_path=path)
+
+    examples = load_wildjailbreak(config)[0]
+
+    assert examples[0].conversation[0].content == "usable prompt"
+
+
 def test_schema_fingerprint_includes_observed_value_types(tmp_path: Path) -> None:
     def fingerprint(value: object) -> str:
         path = tmp_path / "fixture.jsonl"

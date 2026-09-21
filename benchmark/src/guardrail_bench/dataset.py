@@ -36,7 +36,16 @@ def normalize_row(row: dict[str, Any], index: int) -> SourceExample:
         messages = tuple(Message.model_validate(message) for message in row["conversation"])
     else:
         prompt_field = "adversarial" if label.startswith("adversarial_") else "vanilla"
-        prompt = row.get(prompt_field) or row.get("prompt") or row.get("instruction")
+        # The pinned TSV contains a small number of rows whose label says
+        # adversarial while that column is empty and the usable text is in
+        # vanilla. Fall back across the prompt columns before rejecting it.
+        prompt = (
+            row.get(prompt_field)
+            or row.get("vanilla")
+            or row.get("adversarial")
+            or row.get("prompt")
+            or row.get("instruction")
+        )
         if not isinstance(prompt, str) or not prompt.strip():
             raise ValueError(f"row {index}: no supported conversation or prompt field")
         messages = (Message(role=Role.USER, content=prompt),)
