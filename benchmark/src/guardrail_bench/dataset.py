@@ -52,7 +52,15 @@ def load_wildjailbreak(config: DatasetConfig) -> tuple[list[SourceExample], Data
             load_dataset = importlib.import_module("datasets").load_dataset
         except ImportError as exc:
             raise RuntimeError("install the 'dataset' extra to load WildJailbreak") from exc
-        dataset = load_dataset(config.name, config.config_name, split=config.split, revision=config.revision)
+        # Stream the TSV-backed dataset so Arrow does not infer a single column type
+        # from an early batch and then fail when later rows contain text values.
+        dataset = load_dataset(
+            config.name,
+            config.config_name,
+            split=config.split,
+            revision=config.revision,
+            streaming=True,
+        )
         rows = [dict(row) for row in dataset]
     if not rows:
         raise ValueError("dataset is empty")

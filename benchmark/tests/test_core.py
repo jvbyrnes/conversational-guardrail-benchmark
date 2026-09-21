@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
+from types import ModuleType
 
 import pytest
 from guardrail_bench.adapters import OpenRouterAdapter
@@ -68,6 +70,32 @@ def test_sampling_rejects_too_small_rate() -> None:
 def test_live_revision_must_be_immutable() -> None:
     with pytest.raises(ValidationError, match="40-character"):
         DatasetConfig(name="x", revision="mutable-branch", split="train")
+
+
+def test_live_dataset_loader_uses_streaming(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: dict[str, object] = {}
+
+    class FakeDataset:
+        def __iter__(self):
+            return iter(
+                [{"id": "a", "data_type": "adversarial_harmful", "adversarial": "prompt"}]
+            )
+
+    def fake_load_dataset(*args: object, **kwargs: object) -> FakeDataset:
+        calls.update(kwargs)
+        return FakeDataset()
+
+    monkeypatch.setitem(sys.modules, "datasets", ModuleType("datasets"))
+    sys.modules["datasets"].load_dataset = fake_load_dataset  # type: ignore[attr-defined]
+    config = DatasetConfig(
+        name="allenai/wildjailbreak",
+        revision="5ddc12a7894f842b0619b8e1c7ee496b198af009",
+        split="train",
+    )
+
+    load_wildjailbreak(config)
+
+    assert calls["streaming"] is True
 
 
 def test_wildjailbreak_vanilla_rows_use_the_vanilla_prompt() -> None:
