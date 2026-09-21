@@ -30,6 +30,11 @@ Run the end-to-end fixture (no credentials or network access):
 uv run guardrail-bench --config benchmark/config/fixture.yaml
 ```
 
+Interactive runs show a progress bar on stderr, including completed predictions,
+elapsed time, estimated time remaining, and the error count. Progress is disabled
+automatically when stderr is redirected; use `--progress` to force it or
+`--no-progress` to disable it explicitly.
+
 Run the static result viewer from the repository root:
 
 ```bash
