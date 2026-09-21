@@ -55,13 +55,20 @@ publication run. A live run also requires both `execution.cost_cap_usd` and a
 undersized controls before loading data or making model calls. The cap may be
 overridden explicitly with `--cost-cap-usd`.
 
-Every initial paid call and retry atomically consumes its full configured reservation
-before the request starts. Reservations are deliberately not refunded, including when
-a provider omits billed cost, so missing billing metadata cannot reopen budget. Paid
+Every initial paid call and retry atomically reserves its full configured allowance
+before the request starts. When a provider returns a finite, non-negative billed cost
+that does not exceed the reservation, that reservation is reconciled to actual spend,
+making the unused allowance available to later calls. Missing or untrustworthy billing
+metadata keeps the reservation held, so it cannot reopen budget accidentally. Paid
 calls pass through one gate: cap exhaustion, an HTTP 402/recognizable insufficient-
 credit response, invalid reported cost, or a reported charge above its reservation
 prevents later provider requests. Select a conservative reservation from current
 pricing, maximum input size, output-token limits, and any provider extras.
+
+Run manifests distinguish `cost_admitted_usd` (the cumulative reservations admitted),
+`cost_reserved_usd` (the current amount held against the cap, including unreconciled
+reservations), and `cost_actual_usd` (valid provider-reported spend). Missing billing
+data remains included in the held amount but is excluded from actual spend.
 
 This process-local cap controls which calls the runner admits; it cannot undo a single
 provider charge that violates the configured reservation. Use a dedicated provider key
@@ -98,7 +105,7 @@ Do not put secrets in YAML. `.env` is ignored, but the runner does not load it i
 - **Jev integration:** the adapter uses Jev's typed `adecide` contract and preserves unavailable probability/usage fields as absent/zero rather than inventing them. The optional import is lazy so the offline suite remains dependency-free. Jev's package support changes independently, so a minimal paid smoke test is required after installing a compatible release.
 - **LLM baseline:** OpenRouter's OpenAI-compatible Chat Completions API is the sole general-purpose baseline. The semantic task question is passed unchanged as the system instruction; only provider serialization differs.
 - **Errors and cost:** exhausted errors remain typed records and are excluded from classification metrics. Coverage exposes their impact. Unknown model pricing produces a zero estimate; raw token usage is retained so costs can be recomputed after adding a versioned price.
-- **Live cost gate:** paid adapters require a run cap and conservative per-attempt reservations. The cap must cover one fully retried attempt for every enabled paid adapter, every retry reserves again, and reservations are never refunded. Provider-reported overages and insufficient-funds responses stop later paid calls and mark the run incomplete.
+- **Live cost gate:** paid adapters require a run cap and conservative per-attempt reservations. The cap must cover one fully retried attempt for every enabled paid adapter, and every retry reserves again. Trustworthy provider-reported costs reconcile reservations to actual spend; missing or invalid billing data remains held fail-closed. Provider-reported overages and insufficient-funds responses stop later paid calls and mark the run incomplete.
 - **Durable interruption state:** the runner creates `run-status.json` before adapter execution and fsyncs each completed prediction to `predictions.partial.jsonl`. Normal artifacts are still written for cap- or funds-stopped runs, but both their manifest and checkpoint are marked `incomplete` with a reason. An unexpected interruption leaves the already-checkpointed predictions available for diagnosis.
 - **Publication:** `rate == 1.0` alone marks a publication run, matching the OpenSpec decision. The static site never launches evaluations and only reads checked-in artifacts.
 

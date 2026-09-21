@@ -116,6 +116,8 @@ class RunManifest(StrictModel):
     pricing_version: str
     cost_cap_usd: float | None = Field(default=None, gt=0)
     cost_reserved_usd: float = Field(default=0, ge=0)
+    cost_admitted_usd: float = Field(default=0, ge=0)
+    cost_actual_usd: float = Field(default=0, ge=0)
     status: Literal["complete", "incomplete"] = "complete"
     incomplete_reason: str | None = None
     started_at: datetime

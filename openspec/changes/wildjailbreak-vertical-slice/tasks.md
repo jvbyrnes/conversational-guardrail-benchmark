@@ -64,6 +64,7 @@
 - [x] 8.1 Run the offline fixture through preparation, fake adapters, aggregation, and site artifact generation
 - [ ] 8.2 Run a minimal live smoke test for each configured real adapter with an explicit cost cap
   - [x] Implement required run caps, per-attempt reservations, fail-fast paid-call gating, and durable incomplete-run checkpoints
+  - [x] Reconcile trustworthy provider-reported costs to release unused reservations while preserving fail-closed accounting
   - [ ] Execute the paid live smoke test (not performed by the offline implementation)
 - [ ] 8.3 Run a deterministic 1% development benchmark for both WildJailbreak tasks
 - [ ] 8.4 Review errors and label-mapping samples before any full run

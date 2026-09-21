@@ -167,11 +167,41 @@ class _CountingAdapter:
 
 
 @pytest.mark.asyncio
-async def test_cost_budget_reserves_before_calls_and_does_not_refund_missing_cost() -> None:
+async def test_cost_budget_reconciles_valid_cost_and_reopens_allowance() -> None:
     adapter = _CountingAdapter(
         [
             adapters.AdapterResult(False, usage=Usage(provider_fields={"cost": 0.004})),
+            adapters.AdapterResult(False, usage=Usage(provider_fields={"cost": 0.004})),
+            adapters.AdapterResult(False, usage=Usage(provider_fields={"cost": 0.004})),
+            adapters.AdapterResult(False, usage=Usage(provider_fields={"cost": 0.004})),
+            adapters.AdapterResult(False, usage=Usage(provider_fields={"cost": 0.004})),
+        ]
+    )
+    budget = CostBudget.from_float(0.02)
+
+    first, _ = await budget.call(adapter, CONVERSATION, TASK, 0.006, 1)
+    second, _ = await budget.call(adapter, CONVERSATION, TASK, 0.006, 1)
+    third, _ = await budget.call(adapter, CONVERSATION, TASK, 0.006, 1)
+    fourth, _ = await budget.call(adapter, CONVERSATION, TASK, 0.006, 1)
+    blocked, _ = await budget.call(adapter, CONVERSATION, TASK, 0.006, 1)
+
+    assert first.error is None
+    assert second.error is None
+    assert third.error is None
+    assert fourth.error is None
+    assert blocked.error is not None and blocked.error.kind == "cost_cap"
+    assert adapter.calls == 4
+    assert budget.reserved_usd == Decimal("0.016")
+    assert budget.admitted_usd == Decimal("0.024")
+    assert budget.actual_usd == Decimal("0.016")
+
+
+@pytest.mark.asyncio
+async def test_cost_budget_keeps_missing_cost_reservation() -> None:
+    adapter = _CountingAdapter(
+        [
             adapters.AdapterResult(False),
+            adapters.AdapterResult(False, usage=Usage(provider_fields={"cost": 0.004})),
         ]
     )
     budget = CostBudget.from_float(0.02)
@@ -183,8 +213,9 @@ async def test_cost_budget_reserves_before_calls_and_does_not_refund_missing_cos
     assert first.error is None
     assert second.error is None
     assert blocked.error is not None and blocked.error.kind == "cost_cap"
-    assert adapter.calls == 2
-    assert budget.reserved_usd == Decimal("0.02")
+    assert budget.reserved_usd == Decimal("0.014")
+    assert budget.admitted_usd == Decimal("0.02")
+    assert budget.actual_usd == Decimal("0.004")
 
 
 @pytest.mark.asyncio
@@ -201,6 +232,23 @@ async def test_cost_budget_trips_when_reported_cost_exceeds_reservation() -> Non
     assert "exceeded" in breach.error.message
     assert blocked.error is not None and blocked.error.kind == "cost_cap"
     assert adapter.calls == 1
+    assert budget.reserved_usd == Decimal("0.011")
+    assert budget.actual_usd == Decimal("0.011")
+
+
+@pytest.mark.asyncio
+async def test_cost_budget_releases_only_unused_valid_reservation() -> None:
+    adapter = _CountingAdapter(
+        [adapters.AdapterResult(False, usage=Usage(provider_fields={"cost": 0}))]
+    )
+    budget = CostBudget.from_float(0.01)
+
+    result, _ = await budget.call(adapter, CONVERSATION, TASK, 0.01, 1)
+
+    assert result.error is None
+    assert budget.reserved_usd == Decimal("0")
+    assert budget.admitted_usd == Decimal("0.01")
+    assert budget.actual_usd == Decimal("0")
 
 
 @pytest.mark.asyncio
@@ -209,7 +257,7 @@ async def test_retries_each_require_a_fresh_cost_reservation() -> None:
         [
             adapters.AdapterResult(
                 None,
-                usage=Usage(provider_fields={"cost": 0.001}),
+                usage=Usage(provider_fields={"cost": 0.006}),
                 error=PredictionError(kind="provider", message="retry", retryable=True),
             )
         ]
@@ -228,7 +276,9 @@ async def test_retries_each_require_a_fresh_cost_reservation() -> None:
 
     assert result.error is not None and result.error.kind == "cost_cap"
     assert adapter.calls == 2
-    assert budget.reserved_usd == Decimal("0.02")
+    assert budget.reserved_usd == Decimal("0.012")
+    assert budget.admitted_usd == Decimal("0.02")
+    assert budget.actual_usd == Decimal("0.012")
 
 
 @pytest.mark.asyncio

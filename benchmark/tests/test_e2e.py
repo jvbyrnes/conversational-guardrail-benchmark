@@ -97,13 +97,15 @@ async def test_runner_stops_paid_calls_at_reserved_cost_cap(
 
     manifest, predictions, aggregate = await run(config)
 
-    assert adapter.calls == 2
+    assert adapter.calls == 3
     assert manifest.cost_cap_usd == 0.02
-    assert manifest.cost_reserved_usd == 0.02
+    assert manifest.cost_reserved_usd == 0.012
+    assert manifest.cost_admitted_usd == 0.03
+    assert manifest.cost_actual_usd == 0.012
     assert manifest.status == "incomplete"
     assert manifest.incomplete_reason is not None
-    assert sum(item.error is not None and item.error.kind == "cost_cap" for item in predictions) == 6
-    assert aggregate.systems[0].successful == 2
+    assert sum(item.error is not None and item.error.kind == "cost_cap" for item in predictions) == 5
+    assert aggregate.systems[0].successful == 3
     directory = tmp_path / manifest.run_id
     checkpoint = RunCheckpoint.model_validate_json((directory / "run-status.json").read_text())
     assert checkpoint.status == "incomplete"
