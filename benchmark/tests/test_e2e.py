@@ -8,7 +8,15 @@ import guardrail_bench.runner as runner
 import pytest
 from guardrail_bench.adapters import AdapterResult
 from guardrail_bench.config import BenchmarkConfig, load_config
-from guardrail_bench.models import AggregateResult, Message, PredictionError, RunCheckpoint, TaskDefinition, Usage
+from guardrail_bench.models import (
+    AggregateResult,
+    Message,
+    Prediction,
+    PredictionError,
+    RunCheckpoint,
+    TaskDefinition,
+    Usage,
+)
 from guardrail_bench.runner import run
 
 ROOT = Path(__file__).parents[2]
@@ -64,6 +72,28 @@ async def test_runner_batches_classification_tasks(tmp_path: Path, monkeypatch: 
     await run(config)
 
     assert gather_sizes == [2, 2, 2, 2]
+
+
+@pytest.mark.asyncio
+async def test_runner_reports_progress_for_every_prediction(tmp_path: Path) -> None:
+    class RecordingProgress:
+        def __init__(self) -> None:
+            self.total: int | None = None
+            self.predictions: list[Prediction] = []
+
+        def start(self, total: int) -> None:
+            self.total = total
+
+        def advance(self, prediction: Prediction) -> None:
+            self.predictions.append(prediction)
+
+    config = load_config(ROOT / "benchmark/config/fixture.yaml", output_dir=tmp_path)
+    progress = RecordingProgress()
+
+    _, predictions, _ = await run(config, progress=progress)
+
+    assert progress.total == 8
+    assert progress.predictions == predictions
 
 
 @pytest.mark.asyncio

@@ -7,7 +7,7 @@ import subprocess
 from collections import Counter
 from collections.abc import Coroutine
 from datetime import UTC, datetime
-from typing import Any, Literal
+from typing import Any, Literal, Protocol
 
 from guardrail_bench.adapters import (
     FakeAdapter,
@@ -24,6 +24,12 @@ from guardrail_bench.metrics import aggregate
 from guardrail_bench.models import AggregateResult, Prediction, RunManifest
 from guardrail_bench.sampling import stratified_sample
 from guardrail_bench.tasks import get_task
+
+
+class ProgressReporter(Protocol):
+    def start(self, total: int) -> None: ...
+
+    def advance(self, prediction: Prediction) -> None: ...
 
 
 def _adapter(config: AdapterConfig) -> ModelAdapter:
@@ -43,7 +49,9 @@ def _git_revision() -> str:
         return "unknown"
 
 
-async def run(config: BenchmarkConfig) -> tuple[RunManifest, list[Prediction], AggregateResult]:
+async def run(
+    config: BenchmarkConfig, *, progress: ProgressReporter | None = None
+) -> tuple[RunManifest, list[Prediction], AggregateResult]:
     started = datetime.now(UTC)
     enabled = [item for item in config.adapters if item.enabled]
     if not enabled:
@@ -109,6 +117,8 @@ async def run(config: BenchmarkConfig) -> tuple[RunManifest, list[Prediction], A
     adapters = [(_adapter(item), item) for item in enabled]
     expected_predictions = len(selected) * len(adapters)
     create_checkpoint(run_directory, run_id, expected_predictions, started)
+    if progress is not None:
+        progress.start(expected_predictions)
     checkpoint_lock = asyncio.Lock()
 
     async def classify_and_checkpoint(
@@ -117,6 +127,8 @@ async def run(config: BenchmarkConfig) -> tuple[RunManifest, list[Prediction], A
         prediction = await classify(adapter, adapter_config, example_index)
         async with checkpoint_lock:
             append_checkpoint(run_directory, [prediction], expected_predictions)
+            if progress is not None:
+                progress.advance(prediction)
         return prediction
 
     predictions: list[Prediction] = []
