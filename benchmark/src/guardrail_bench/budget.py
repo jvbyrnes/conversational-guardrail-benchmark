@@ -29,14 +29,22 @@ def _reported_cost(result: AdapterResult) -> Decimal | None:
 class CostBudget:
     """Conservative dispatch gate for paid adapter attempts.
 
-    Reservations are never refunded. This means missing provider billing fields cannot
-    accidentally reopen budget, and the configured cap always bounds the reservations
-    admitted by this process. The gate remains held during a paid call so an excessive
-    provider-reported charge stops later calls before they start.
+    A reservation is held before each paid call so the configured cap bounds every
+    admitted attempt. A trustworthy provider-reported cost then replaces that
+    reservation in the current commitment, making unused allowance available to later
+    calls. Missing or untrustworthy billing data keeps the reservation held and stops
+    the run when it cannot be safely reconciled. The gate remains held during a paid
+    call, making admission and reconciliation atomic.
     """
 
     cap_usd: Decimal
+    # Current amount consuming the cap: valid reported spend plus unreconciled
+    # reservations. This is the value used for admission checks.
     reserved_usd: Decimal = Decimal("0")
+    # Sum of all reservations admitted before provider calls, retained for reporting.
+    admitted_usd: Decimal = Decimal("0")
+    # Sum of valid provider-reported costs reconciled so far.
+    actual_usd: Decimal = Decimal("0")
     _breach: str | None = None
     _gate: asyncio.Lock = field(default_factory=asyncio.Lock)
 
@@ -68,6 +76,7 @@ class CostBudget:
                     0.0,
                 )
             self.reserved_usd += reservation
+            self.admitted_usd += reservation
             request_started = time.perf_counter()
             try:
                 result = await asyncio.wait_for(adapter.classify(conversation, task), timeout_seconds)
@@ -92,11 +101,18 @@ class CostBudget:
                 self._breach = str(exc)
                 return self._error(self._breach, result, sanitize_reported_cost=True), latency_ms
             if reported is not None and reported > reservation:
+                # Keep the cap fail-closed, but account for the trustworthy overage
+                # so artifacts reflect the provider-reported spend.
+                self.reserved_usd += reported - reservation
+                self.actual_usd += reported
                 self._breach = (
                     f"provider-reported cost {reported} USD exceeded the configured "
                     f"{reservation} USD reservation; no further paid calls were started"
                 )
                 return self._error(self._breach, result), latency_ms
+            if reported is not None:
+                self.reserved_usd -= reservation - reported
+                self.actual_usd += reported
             return result, latency_ms
 
     @staticmethod

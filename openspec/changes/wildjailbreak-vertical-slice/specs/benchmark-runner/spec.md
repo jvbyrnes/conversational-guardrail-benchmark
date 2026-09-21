@@ -144,6 +144,21 @@ The system SHALL reject enabled paid adapters without a run-level USD cost cap a
 - **THEN** no provider request is made
 - **AND** the skipped prediction has a typed cost-cap error
 
+#### Scenario: A trustworthy reported cost reconciles a reservation
+
+- **GIVEN** a paid attempt was admitted with a reservation larger than its provider-reported finite, non-negative cost
+- **WHEN** the provider call completes
+- **THEN** the current cap commitment is reduced to the reported cost
+- **AND** the unused reservation is available to later paid attempts
+- **AND** the run records admitted reservations separately from actual reported spend
+
+#### Scenario: Billing cannot be reconciled
+
+- **GIVEN** a paid attempt has missing, malformed, negative, non-finite, or otherwise untrustworthy billing metadata
+- **WHEN** the provider call completes
+- **THEN** its reservation remains held against the cap
+- **AND** no reservation is released based on that metadata
+
 #### Scenario: Provider billing cannot be trusted
 
 - **WHEN** a provider reports insufficient funds, invalid cost, or cost above the configured reservation

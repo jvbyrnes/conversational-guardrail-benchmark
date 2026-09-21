@@ -175,9 +175,11 @@ async def run(config: BenchmarkConfig) -> tuple[RunManifest, list[Prediction], A
             }
             for item in enabled
         },
-        pricing_version="provider-reported+reservation-v1",
+        pricing_version="provider-reported+reservation-v2",
         cost_cap_usd=config.execution.cost_cap_usd,
         cost_reserved_usd=float(budget.reserved_usd) if budget is not None else 0,
+        cost_admitted_usd=float(budget.admitted_usd) if budget is not None else 0,
+        cost_actual_usd=float(budget.actual_usd) if budget is not None else 0,
         status=status,
         incomplete_reason=incomplete_reason,
         started_at=started,
