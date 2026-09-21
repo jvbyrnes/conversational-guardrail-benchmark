@@ -23,7 +23,7 @@ from guardrail_bench.runner import run
 
 
 class CliProgress:
-    def __init__(self) -> None:
+    def __init__(self, *, force_terminal: bool | None = None) -> None:
         self._errors = 0
         self._progress = Progress(
             SpinnerColumn(),
@@ -33,7 +33,7 @@ class CliProgress:
             TaskProgressColumn(),
             TimeElapsedColumn(),
             TimeRemainingColumn(),
-            console=Console(stderr=True),
+            console=Console(stderr=True, force_terminal=force_terminal),
         )
         self._task_id = self._progress.add_task("Preparing benchmark", total=None)
 
@@ -81,7 +81,8 @@ def main() -> None:
     )
     show_progress = sys.stderr.isatty() if args.progress is None else args.progress
     if show_progress:
-        with CliProgress() as progress:
+        force_terminal = True if args.progress is True else None
+        with CliProgress(force_terminal=force_terminal) as progress:
             manifest, _, _ = asyncio.run(run(config, progress=progress))
     else:
         manifest, _, _ = asyncio.run(run(config))

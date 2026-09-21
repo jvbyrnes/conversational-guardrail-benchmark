@@ -7,6 +7,7 @@ from pathlib import Path
 import guardrail_bench.runner as runner
 import pytest
 from guardrail_bench.adapters import AdapterResult
+from guardrail_bench.cli import CliProgress
 from guardrail_bench.config import BenchmarkConfig, load_config
 from guardrail_bench.models import (
     AggregateResult,
@@ -20,6 +21,12 @@ from guardrail_bench.models import (
 from guardrail_bench.runner import run
 
 ROOT = Path(__file__).parents[2]
+
+
+def test_forced_progress_uses_terminal_rendering() -> None:
+    progress = CliProgress(force_terminal=True)
+
+    assert progress._progress.console.is_terminal  # noqa: SLF001
 
 
 @pytest.mark.asyncio
