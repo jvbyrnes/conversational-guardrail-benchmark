@@ -12,6 +12,8 @@ import httpx
 
 from guardrail_bench.models import Message, PredictionError, TaskDefinition, Usage
 
+JEV_INPUT_USD_PER_MILLION_TOKENS = 0.042
+
 
 def _is_insufficient_funds(exc: Exception) -> bool:
     status_code = getattr(exc, "status_code", None)
@@ -190,7 +192,11 @@ class JevAdapter:
                 usage=Usage(
                     input_tokens=usage.input_tokens or 0,
                     output_tokens=usage.output_tokens or 0,
-                    provider_fields=usage.model_dump(mode="json"),
+                    provider_fields={
+                        **usage.model_dump(mode="json"),
+                        "estimated_cost": (usage.input_tokens or 0) * JEV_INPUT_USD_PER_MILLION_TOKENS / 1_000_000,
+                        "pricing_source": "typesafe-published-input-only",
+                    },
                 ),
             )
         except Exception as exc:

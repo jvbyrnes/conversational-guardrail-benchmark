@@ -49,6 +49,12 @@ def _git_revision() -> str:
         return "unknown"
 
 
+def _estimated_cost(result: Any) -> float:
+    fields = result.usage.provider_fields
+    value = fields.get("cost", fields.get("estimated_cost", 0.0))
+    return float(value)
+
+
 async def run(
     config: BenchmarkConfig, *, progress: ProgressReporter | None = None
 ) -> tuple[RunManifest, list[Prediction], AggregateResult]:
@@ -110,7 +116,7 @@ async def run(
             score=result.score,
             latency_ms=latency,
             usage=result.usage,
-            estimated_cost_usd=float(result.usage.provider_fields.get("cost", 0.0)),
+            estimated_cost_usd=_estimated_cost(result),
             error=result.error,
         )
 
