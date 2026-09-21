@@ -7,10 +7,11 @@ from types import ModuleType
 
 import pytest
 from guardrail_bench.adapters import OpenRouterAdapter
-from guardrail_bench.config import BenchmarkConfig, DatasetConfig, load_config
+from guardrail_bench.config import AdapterConfig, BenchmarkConfig, DatasetConfig, load_config
 from guardrail_bench.dataset import load_wildjailbreak
 from guardrail_bench.metrics import aggregate
 from guardrail_bench.models import Prediction, PredictionError
+from guardrail_bench.runner import _pricing_version
 from guardrail_bench.sampling import stratified_sample
 from guardrail_bench.tasks import get_task
 from pydantic import ValidationError
@@ -190,6 +191,11 @@ def test_paid_adapters_require_cost_cap_and_reservation() -> None:
     with pytest.raises(ValidationError, match="cost_reservation_usd is required"):
         BenchmarkConfig.model_validate(raw)
 
+
+def test_jev_pricing_version_is_manifested() -> None:
+    assert "typesafe-published-input-v2026-09-22" in _pricing_version(
+        [AdapterConfig(id="jev", kind="jev", model="jev-latest", cost_reservation_usd=0.005)]
+    )
 
 def test_cost_cap_covers_one_fully_retried_attempt_per_paid_adapter() -> None:
     raw = load_config(ROOT / "benchmark/config/fixture.yaml").model_dump(mode="json")

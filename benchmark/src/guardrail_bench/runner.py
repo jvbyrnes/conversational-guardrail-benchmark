@@ -10,6 +10,7 @@ from datetime import UTC, datetime
 from typing import Any, Literal, Protocol
 
 from guardrail_bench.adapters import (
+    JEV_PRICING_VERSION,
     FakeAdapter,
     JevAdapter,
     ModelAdapter,
@@ -53,6 +54,13 @@ def _estimated_cost(result: Any) -> float:
     fields = result.usage.provider_fields
     value = fields.get("cost", fields.get("estimated_cost", 0.0))
     return float(value)
+
+
+def _pricing_version(enabled: list[AdapterConfig]) -> str:
+    versions = ["provider-reported+reservation-v2"]
+    if any(item.kind == "jev" for item in enabled):
+        versions.append(JEV_PRICING_VERSION)
+    return "+".join(versions)
 
 
 async def run(
@@ -193,7 +201,7 @@ async def run(
             }
             for item in enabled
         },
-        pricing_version="provider-reported+reservation-v2",
+        pricing_version=_pricing_version(enabled),
         cost_cap_usd=config.execution.cost_cap_usd,
         cost_reserved_usd=float(budget.reserved_usd) if budget is not None else 0,
         cost_admitted_usd=float(budget.admitted_usd) if budget is not None else 0,
