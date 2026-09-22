@@ -4,7 +4,7 @@
 
 ### Requirement: Canonical system identity
 
-The system SHALL assign every evaluated system a canonical identity containing adapter, provider, model ID, model snapshot status, output-affecting parameters, and a deterministic configuration fingerprint.
+The system SHALL assign every configured system a canonical identity containing adapter and adapter version, provider, requested model ID, resolved snapshot when available, snapshot status, effective output-affecting parameters and defaults, request mode, and a deterministic configuration fingerprint.
 
 #### Scenario: Provider exposes an immutable snapshot
 
@@ -27,29 +27,80 @@ The system SHALL assign every evaluated system a canonical identity containing a
 - **WHEN** results are indexed
 - **THEN** they remain distinct systems
 
+#### Scenario: The same system evaluates different tasks
+
+- **GIVEN** one configured system evaluates two different task questions or label mappings
+- **WHEN** identities are derived
+- **THEN** both results retain the same `system_id`
+- **AND** receive different task-content-derived `evaluation_id` values
+- **AND** receive different combined `evaluated_system_id` values
+
+### Requirement: Authoritative evaluation identity
+
+The system SHALL derive evaluation identity from canonical inference/task-definition content including task ID, semantic question, label mapping, decision threshold, and parser/classifier version; post-hoc metric definitions SHALL remain in comparison identity rather than system or evaluation identity.
+
+#### Scenario: Task content changes without a readable version bump
+
+- **GIVEN** a task question or label mapping changes while its readable version is unchanged
+- **WHEN** evaluation identity is recomputed
+- **THEN** the evaluation ID changes
+- **AND** the results cannot be conflated or quality-ranked directly
+
 ### Requirement: Deterministic comparison identity
 
-The system SHALL derive a comparison key from dataset, task, classifier, cohort, metric, and schema-version fields that materially affect comparability.
+The system SHALL derive separate quality, cost, and latency comparison keys from the fields that materially affect each metric family and report differing field paths.
 
 #### Scenario: Equivalent runs are selected
 
-- **GIVEN** two valid results have identical comparison-key fields
+- **GIVEN** two valid results have identical quality, cost, and latency key fields
 - **WHEN** the site compares them
-- **THEN** it may display deltas and rank their metrics
+- **THEN** it may display deltas and rankings for all three metric families
 
 #### Scenario: Selected source cohorts differ
 
-- **GIVEN** two results have different selected source-ID cohort digests
+- **GIVEN** two results have different authoritative public cohort digests or pseudonym key IDs
 - **WHEN** the site compares them
-- **THEN** it labels them non-comparable
-- **AND** suppresses rankings, winner language, and metric deltas
+- **THEN** it labels quality, cost, and latency non-comparable
+- **AND** suppresses rankings, winner language, and metric deltas for all three families because cost and latency keys embed the quality key
 - **AND** identifies the cohort as a differing field
 
 #### Scenario: Classifier versions differ
 
 - **GIVEN** two results use different classifier versions
 - **WHEN** the site compares them
-- **THEN** it labels them non-comparable even if their task IDs match
+- **THEN** it labels quality, cost, and latency non-comparable even if their task IDs match
+- **AND** suppresses rankings and deltas for all three families because cost and latency keys embed the quality key
+
+#### Scenario: Pricing methods differ
+
+- **GIVEN** two results have the same quality key but different pricing versions, billing methods, currencies, or cost coverage
+- **WHEN** the site compares them
+- **THEN** quality rankings and deltas may remain available
+- **AND** cost rankings and deltas are suppressed with exact differing fields
+
+#### Scenario: Execution conditions differ
+
+- **GIVEN** two results have the same quality key but different timing definitions, concurrency, retry/timeout policy, routing or region class, or warm-up policy
+- **WHEN** the site compares them
+- **THEN** quality rankings and deltas may remain available
+- **AND** latency rankings and deltas are suppressed with exact differing fields
+
+### Requirement: Independently persisted cohort
+
+The system SHALL write and digest an authoritative cohort manifest from dataset selection before any model request and SHALL derive expected predictions by combining the run evaluation ID with manifest-declared system IDs, then taking the Cartesian product of cohort members and those evaluated-system IDs.
+
+#### Scenario: A source is missing from every system
+
+- **GIVEN** an authoritative cohort member has no prediction row for any system
+- **WHEN** completeness validation runs
+- **THEN** validation fails for every missing expected identity
+- **AND** the cohort is not reconstructed from the remaining predictions
+
+#### Scenario: Cohort membership is tampered with
+
+- **GIVEN** a published cohort member or its ground truth differs from the digested manifest
+- **WHEN** validation runs
+- **THEN** validation fails with a stable cohort-integrity rule ID
 
 ### Requirement: Structured pre-publication validation
 
@@ -71,7 +122,7 @@ The system SHALL validate schemas, provenance, completeness, uniqueness, aggrega
 
 #### Scenario: Prediction records are duplicated
 
-- **GIVEN** two predictions have the same source ID and system identity in one run
+- **GIVEN** two published predictions have the same public case ID and evaluated-system identity in one run
 - **WHEN** validation runs
 - **THEN** completeness validation fails
 - **AND** neither record is silently selected
@@ -90,29 +141,73 @@ The system SHALL validate schemas, provenance, completeness, uniqueness, aggrega
 - **THEN** validation fails
 - **AND** the report identifies each inconsistent metric
 
+#### Scenario: Published cost is only partially known
+
+- **GIVEN** any relevant prediction has unavailable cost
+- **WHEN** aggregate validation runs
+- **THEN** total cost and cost per 1,000 examples are unavailable rather than partial or zero
+- **AND** cost known count and cost coverage are reported
+- **AND** the cost key is null and cost rankings and deltas are disabled unless cost coverage equals `1.0`
+
+#### Scenario: Code provenance is dirty or unavailable
+
+- **GIVEN** a run cannot prove a clean committed source tree
+- **WHEN** publication validation runs
+- **THEN** it is non-rankable and excluded from the public index
+- **AND** it may be described in the preview index
+
 #### Scenario: A published field contains sensitive data
 
 - **GIVEN** an artifact contains a credential, secret header, upstream conversation text, or unapproved raw provider payload
 - **WHEN** publication validation runs
 - **THEN** publication is rejected
 
+#### Scenario: A public prediction contains an unknown field
+
+- **GIVEN** a projected prediction contains an internal source ID, free-form error message, arbitrary provider field, request ID, or any field outside the versioned allowlist
+- **WHEN** publication validation runs
+- **THEN** strict schema validation rejects it
+
+#### Scenario: A public case identifier is generated
+
+- **GIVEN** an internal source ID is selected
+- **WHEN** the public cohort and predictions are projected
+- **THEN** they use the same HMAC-SHA-256 pseudonymous case ID scoped by dataset identity
+- **AND** publish the pseudonym key identifier but neither the key nor internal source ID
+
+#### Scenario: Pseudonym key material is unavailable or rotates
+
+- **GIVEN** the configured namespace key is unavailable
+- **WHEN** public projection is requested
+- **THEN** publication fails closed before writing public artifacts
+- **AND** when a new key ID is intentionally introduced, its cases form a new non-comparable alignment namespace
+
 ### Requirement: Versioned published run index
 
-The system SHALL generate a versioned index of validated run bundles for static-site discovery.
+The system SHALL generate byte-deterministic versioned public and preview indexes for static-site discovery.
 
 #### Scenario: Valid runs are indexed
 
 - **GIVEN** one or more validated published bundles
 - **WHEN** the index is generated
-- **THEN** every entry includes run state, comparison key, system summaries, artifact URIs, and artifact digests
+- **THEN** every entry includes run state, metric-family comparison keys, system summaries, artifact URIs, and artifact digests
 - **AND** index generation is deterministic for the same inputs
+
+#### Scenario: An index is regenerated from identical bundles
+
+- **GIVEN** the same validated bundle bytes and publication metadata
+- **WHEN** index generation runs more than once
+- **THEN** the resulting public index bytes are identical
+- **AND** its `as_of` value is derived from immutable input metadata rather than the wall clock
 
 #### Scenario: Invalid run is encountered
 
 - **GIVEN** a bundle fails validation
 - **WHEN** the public index is generated
-- **THEN** the run is excluded from rankable results
+- **THEN** the run is absent from the public index and excluded from rankable results
 - **AND** the generation report explains the exclusion
+- **AND** the public index exposes no URI for an unsafe artifact
+- **AND** a non-sensitive validation summary may appear only in the preview index
 
 #### Scenario: Existing latest alias remains
 
@@ -129,7 +224,7 @@ The system SHALL preserve original run evidence and generate normalized, indexed
 
 - **GIVEN** a supported version-1 run artifact
 - **WHEN** migration executes
-- **THEN** it writes a new validated published bundle
+- **THEN** it writes a normalized bundle in the public or preview namespace according to its validation and rankability outcome
 - **AND** leaves the original run files byte-for-byte unchanged
 
 #### Scenario: Snapshot metadata is absent during migration
@@ -138,6 +233,27 @@ The system SHALL preserve original run evidence and generate normalized, indexed
 - **WHEN** migration executes
 - **THEN** it records the snapshot as unavailable
 - **AND** does not infer a snapshot from the current provider state
+
+#### Scenario: Legacy zero cost has no supporting evidence
+
+- **GIVEN** a version-1 prediction contains zero cost but lacks trustworthy billing evidence or enough versioned usage data to recompute it
+- **WHEN** migration executes
+- **THEN** cost is migrated as unavailable and null
+- **AND** zero is not treated as a known measured value
+
+#### Scenario: Legacy cleanliness cannot be proven
+
+- **GIVEN** a legacy artifact records a commit but not working-tree state
+- **WHEN** migration executes
+- **THEN** the run is preview-only and non-rankable
+- **AND** migration does not assume the working tree was clean
+
+#### Scenario: Legacy cohort cannot be reconstructed independently
+
+- **GIVEN** a legacy artifact's immutable dataset and recorded selection cannot be replayed with a known sampling algorithm
+- **WHEN** migration executes
+- **THEN** prediction rows are not accepted as the authoritative expected cohort
+- **AND** migration emits an actionable compatibility error and keeps the run preview-only
 
 ### Requirement: Multi-system summary comparison
 
@@ -156,6 +272,15 @@ The static site SHALL allow a user to select two or more systems for one compari
 - **THEN** the summary remains usable without truncating system identity
 - **AND** the detail view uses a bounded or scrollable layout
 
+#### Scenario: Duplicate results exist for one system and cohort
+
+- **GIVEN** multiple valid complete publication runs share a quality key and system ID
+- **WHEN** no run is explicitly selected
+- **THEN** the run with greatest completion timestamp is selected
+- **AND** a timestamp tie is resolved by lexicographic run ID
+- **AND** alternatives and the selection rule are visible
+- **AND** an explicit override pins exact run IDs in the shareable URL
+
 #### Scenario: Missing metric is displayed
 
 - **GIVEN** a valid system does not expose an optional score or cost field
@@ -165,11 +290,11 @@ The static site SHALL allow a user to select two or more systems for one compari
 
 ### Requirement: Source-aligned case comparison
 
-The static site SHALL align per-example predictions by stable source ID and support inspection of disagreements, errors, correctness, and source-label strata without publishing conversation text.
+The static site SHALL align per-example predictions by stable public case ID and support inspection of disagreements, errors, correctness, and source-label strata without publishing internal source IDs or conversation text.
 
 #### Scenario: Systems disagree
 
-- **GIVEN** selected systems return different decisions for a source ID
+- **GIVEN** selected systems return different decisions for a public case ID
 - **WHEN** the user filters to disagreements
 - **THEN** the case is listed with ground truth and each system decision
 
@@ -198,9 +323,10 @@ The site SHALL distinguish validity, completeness, publication kind, staleness, 
 #### Scenario: Incomplete run is displayed
 
 - **GIVEN** a run has incomplete status
-- **WHEN** it is displayed in an allowed preview context
+- **WHEN** it is displayed from the opt-in preview index
 - **THEN** it is visibly incomplete and non-rankable
 - **AND** its incomplete reason is shown
+- **AND** it is absent from the public index
 
 #### Scenario: Valid result is potentially stale
 
