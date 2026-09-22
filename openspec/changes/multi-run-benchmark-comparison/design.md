@@ -91,11 +91,11 @@ The **quality key** contains:
 - quality metric-definition version; and
 - normalized artifact-semantics major version.
 
-The **cost key** contains the quality key plus currency, pricing version, cost method, billing policy, and `cost_coverage == 1.0`; it is null and non-rankable at lower coverage. The **latency key** contains the quality key plus timing-definition version, execution mode, concurrency, retry and timeout policy, provider routing/region class, and warm-up policy; it is null and non-rankable when any required execution field is unavailable.
+The **cost key** contains the quality key plus currency, pricing version, cost method, and billing policy; it is null when any of those provenance fields is unavailable. Cost rankability is a separate per-result state and requires `cost_coverage == 1.0`. The **latency key** contains the quality key plus timing-definition version, execution mode, concurrency, retry and timeout policy, provider routing/region class, and warm-up policy; it is null and non-rankable when any required execution field is unavailable.
 
 Two results are directly comparable for a metric family only when that family's key matches and both have acceptable validation status. Quality may remain rankable while cost or latency is displayed only as an absolute, non-rankable value. Compatibility reports include a state and exact differing field paths for every family.
 
-Runs with different system sets may still contribute individual systems when their keys match. Duplicate results are never silently averaged. For each `(quality_key, system_id)`, the default is the valid, complete publication run with greatest `completed_at`, breaking ties by lexicographic `run_id`; the UI discloses alternatives, permits an explicit override, and encodes exact run IDs in shared URLs.
+Runs with different system sets may still contribute individual systems when their keys match. Duplicate results are never silently averaged. For each `(quality_key, evaluated_system_id)`, the default is the valid, complete publication run with greatest `completed_at`, breaking ties by lexicographic `run_id`; the UI discloses alternatives, permits an explicit override, and encodes exact run IDs in shared URLs.
 
 ## Validation Model
 
@@ -113,6 +113,8 @@ Validation produces a report with `valid`, `warnings`, `errors`, rule IDs, affec
 - Require a model snapshot status; warn rather than fabricate an immutable snapshot.
 - Recompute and verify configuration and cohort fingerprints.
 - Require repository identity, commit revision, committed-tree digest, and `working_tree_state` (`clean`, `dirty`, or `unavailable`). Dirty or unavailable code is preview-only and non-rankable.
+
+Code provenance is captured from the repository root immediately before execution. The implementation records trimmed stdout from `git rev-parse HEAD` as the commit revision and `git rev-parse HEAD^{tree}` as the committed-tree digest, then evaluates `git status --porcelain=v1 --untracked-files=all --ignore-submodules=none`. The working tree is `clean` only when all three commands succeed and the status output is empty. Any staged, unstaged, untracked, or modified-submodule entry makes it `dirty`. A non-Git source directory, a failed command, or missing or malformed output makes it `unavailable`; the implementation must not infer cleanliness from a commit SHA alone. Ignored files remain outside the cleanliness decision because Git does not identify them as source-tree changes.
 
 ### Completeness and uniqueness checks
 
@@ -132,7 +134,7 @@ Published cost is `cost_usd: number | null` plus `cost_status: reported | estima
 
 ### Publication checks
 
-- Construct published predictions through a strict `extra=forbid` DTO that allows only pseudonymous case ID, approved label/ground-truth fields, decision, optional score, stable sanitized error code/category, latency, standardized token counts, and provenance-aware cost fields.
+- Construct published predictions through a strict `extra=forbid` DTO that allows only pseudonymous case ID, `evaluated_system_id`, approved label/ground-truth fields, decision, optional score, stable sanitized error code/category, latency, standardized token counts, and provenance-aware cost fields.
 - Exclude internal source IDs, conversation text, credentials, headers, arbitrary provider fields, raw payloads, request IDs, and free-form error messages. Published system parameters use adapter-versioned safe-field allowlists.
 - Derive `public_case_id` with HMAC-SHA-256 over dataset identity and internal source ID. A controlled publication configuration supplies one stable secret per pseudonym namespace and a non-secret key ID; missing key material fails closed before public projection. The key is never published. Rotation creates a new key ID, public cohort digest, and non-comparable alignment namespace rather than silently joining IDs. A fixed non-secret fixture key is used only by tests.
 - Reject `incomplete`, invalid, dirty-code, and publication-unsafe runs from the public index. Incomplete and invalid metadata may appear in the preview index; publication-safety failures never expose artifact URIs.
@@ -152,15 +154,25 @@ The published index contains:
   "runs": [
     {
       "run_id": "...",
-      "quality_key": "sha256:...",
-      "cost_key": "sha256:...",
-      "latency_key": "sha256:...",
       "task_id": "adversarial_technique",
       "task_version": "1.0.0",
       "run_kind": "publication",
       "status": "complete",
       "validation_status": "valid",
-      "systems": [],
+      "systems": [
+        {
+          "system_id": "sha256:...",
+          "evaluated_system_id": "sha256:...",
+          "quality_key": "sha256:...",
+          "cost_key": null,
+          "latency_key": "sha256:...",
+          "rankability": {
+            "quality": {"eligible": true, "reason": null},
+            "cost": {"eligible": false, "reason": "missing_cost_provenance"},
+            "latency": {"eligible": true, "reason": null}
+          }
+        }
+      ],
       "aggregate_uri": "runs/.../aggregate.json",
       "predictions_uri": "runs/.../predictions.jsonl",
       "cohort_uri": "runs/.../cohort.json",
@@ -171,13 +183,15 @@ The published index contains:
 }
 ```
 
-The exact index schema will be implemented as strict Pydantic models and versioned independently from individual run artifacts. Runs, systems, digest entries, and object keys have specified canonical ordering. `as_of` is deterministically derived as the maximum immutable `published_at` in the included bundles. `source_set_digest` hashes RFC-8785 canonical JSON of tuples `(run_id, manifest_digest, cohort_digest, aggregate_digest, predictions_digest, validation_report_digest)` sorted by `run_id`. Wall-clock command time belongs only in a non-published generation report. Identical inputs therefore produce byte-identical index output.
+The exact index schema will be implemented as strict Pydantic models and versioned independently from individual run artifacts. Comparison keys and intrinsic per-metric rankability eligibility belong to each system result, identified by both `system_id` and `evaluated_system_id`, because cost coverage and execution provenance can differ within one run. Each ineligible state carries a stable reason; pairwise comparability remains a separate result of comparing two eligible entries' keys. Runs, systems, digest entries, and object keys have specified canonical ordering. `as_of` is a nullable field containing the maximum immutable `published_at` in the included bundles, or JSON `null` when there are no included bundles. `source_set_digest` hashes RFC-8785 canonical JSON of tuples `(run_id, manifest_digest, cohort_digest, aggregate_digest, predictions_digest, validation_report_digest)` sorted by `run_id`; for an empty index it is the SHA-256 digest of the RFC-8785 canonical empty array. Wall-clock command time belongs only in a non-published generation report. Identical inputs therefore produce byte-identical index output.
 
 ## Site Interaction
 
 ### Benchmark header and selectors
 
 The page first selects a task/version and compatible cohort, then allows multi-selecting systems/runs. Query parameters encode the selection so comparisons can be shared.
+
+When the public index has no runs, the page renders an explicit no-published-results state without attempting to choose a task, cohort, system, or reference result.
 
 ### Summary matrix
 

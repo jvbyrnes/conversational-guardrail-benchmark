@@ -73,10 +73,17 @@ The system SHALL derive separate quality, cost, and latency comparison keys from
 
 #### Scenario: Pricing methods differ
 
-- **GIVEN** two results have the same quality key but different pricing versions, billing methods, currencies, or cost coverage
+- **GIVEN** two results have the same quality key but different pricing versions, billing methods, or currencies
 - **WHEN** the site compares them
 - **THEN** quality rankings and deltas may remain available
 - **AND** cost rankings and deltas are suppressed with exact differing fields
+
+#### Scenario: Cost coverage is incomplete
+
+- **GIVEN** a result has known cost comparison-key provenance but cost coverage below `1.0`
+- **WHEN** rankability is derived
+- **THEN** its cost key retains the provenance identity
+- **AND** its per-result cost rankability is ineligible with reason `incomplete_cost_coverage`
 
 #### Scenario: Execution conditions differ
 
@@ -127,6 +134,14 @@ The system SHALL validate schemas, provenance, completeness, uniqueness, aggrega
 - **THEN** completeness validation fails
 - **AND** neither record is silently selected
 
+#### Scenario: Published predictions retain result identity
+
+- **GIVEN** a validated run contains predictions from one or more configured systems
+- **WHEN** the strict public prediction DTO is projected
+- **THEN** every record includes its `evaluated_system_id`
+- **AND** records can be grouped and checked for uniqueness by `(public_case_id, evaluated_system_id)`
+- **AND** projection or validation fails when that identity is missing
+
 #### Scenario: An expected prediction failed at the provider
 
 - **GIVEN** a provider request exhausted its retry policy
@@ -147,7 +162,8 @@ The system SHALL validate schemas, provenance, completeness, uniqueness, aggrega
 - **WHEN** aggregate validation runs
 - **THEN** total cost and cost per 1,000 examples are unavailable rather than partial or zero
 - **AND** cost known count and cost coverage are reported
-- **AND** the cost key is null and cost rankings and deltas are disabled unless cost coverage equals `1.0`
+- **AND** per-result cost rankability is ineligible unless cost coverage equals `1.0`
+- **AND** the cost key is null only when required cost-provenance fields are unavailable
 
 #### Scenario: Code provenance is dirty or unavailable
 
@@ -155,6 +171,28 @@ The system SHALL validate schemas, provenance, completeness, uniqueness, aggrega
 - **WHEN** publication validation runs
 - **THEN** it is non-rankable and excluded from the public index
 - **AND** it may be described in the preview index
+
+#### Scenario: Clean code provenance is captured
+
+- **GIVEN** `git rev-parse HEAD` and `git rev-parse HEAD^{tree}` succeed from the repository root
+- **AND** `git status --porcelain=v1 --untracked-files=all --ignore-submodules=none` succeeds with empty output immediately before execution
+- **WHEN** code provenance is captured
+- **THEN** the run records the returned commit revision and committed-tree digest
+- **AND** `working_tree_state` is `clean`
+
+#### Scenario: A source-tree change is detected
+
+- **GIVEN** Git reports any staged, unstaged, untracked, or modified-submodule status entry immediately before execution
+- **WHEN** code provenance is captured
+- **THEN** `working_tree_state` is `dirty`
+- **AND** the run is preview-only and non-rankable
+
+#### Scenario: Git evidence is unavailable
+
+- **GIVEN** the source directory is not a Git work tree, a required Git command fails, or its output is missing or malformed
+- **WHEN** code provenance is captured
+- **THEN** `working_tree_state` is `unavailable`
+- **AND** the run is preview-only and non-rankable
 
 #### Scenario: A published field contains sensitive data
 
@@ -190,8 +228,17 @@ The system SHALL generate byte-deterministic versioned public and preview indexe
 
 - **GIVEN** one or more validated published bundles
 - **WHEN** the index is generated
-- **THEN** every entry includes run state, metric-family comparison keys, system summaries, artifact URIs, and artifact digests
+- **THEN** every entry includes run state, system summaries, artifact URIs, and artifact digests
+- **AND** every system summary includes `system_id`, `evaluated_system_id`, metric-family comparison keys, and per-metric rankability state
 - **AND** index generation is deterministic for the same inputs
+
+#### Scenario: Systems in one run have different rankability
+
+- **GIVEN** a multi-system run in which one system has complete cost provenance and another does not
+- **WHEN** the index is generated
+- **THEN** the first system summary has a non-null cost key and rankable cost state
+- **AND** the second system summary has a null cost key and ineligible cost state with a stable reason
+- **AND** neither system inherits the other's comparison keys or rankability
 
 #### Scenario: An index is regenerated from identical bundles
 
@@ -199,6 +246,21 @@ The system SHALL generate byte-deterministic versioned public and preview indexe
 - **WHEN** index generation runs more than once
 - **THEN** the resulting public index bytes are identical
 - **AND** its `as_of` value is derived from immutable input metadata rather than the wall clock
+
+#### Scenario: No bundle is publishable
+
+- **GIVEN** no discovered bundle passes public-index validation
+- **WHEN** the public index is generated
+- **THEN** it contains an empty `runs` array and `as_of` is JSON `null`
+- **AND** `source_set_digest` is the SHA-256 digest of the RFC-8785 canonical empty array
+- **AND** generation succeeds deterministically
+
+#### Scenario: The public index is empty
+
+- **GIVEN** the site loads a valid public index with an empty `runs` array
+- **WHEN** the comparison page renders
+- **THEN** it shows an explicit no-published-results state
+- **AND** it does not attempt to select a task, cohort, system, or reference result
 
 #### Scenario: Invalid run is encountered
 
@@ -272,9 +334,9 @@ The static site SHALL allow a user to select two or more systems for one compari
 - **THEN** the summary remains usable without truncating system identity
 - **AND** the detail view uses a bounded or scrollable layout
 
-#### Scenario: Duplicate results exist for one system and cohort
+#### Scenario: Duplicate results exist for one evaluated system and cohort
 
-- **GIVEN** multiple valid complete publication runs share a quality key and system ID
+- **GIVEN** multiple valid complete publication runs share a quality key and evaluated-system ID
 - **WHEN** no run is explicitly selected
 - **THEN** the run with greatest completion timestamp is selected
 - **AND** a timestamp tie is resolved by lexicographic run ID
