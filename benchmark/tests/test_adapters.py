@@ -151,6 +151,8 @@ async def test_jev_adapter_uses_typesafe_sdk(monkeypatch: pytest.MonkeyPatch) ->
     assert result.decision is True
     assert result.score == 0.75
     assert result.usage.input_tokens == 4
+    assert result.usage.provider_fields["estimated_cost"] == pytest.approx(4 * 0.042 / 1_000_000)
+    assert result.usage.provider_fields["pricing_source"] == "typesafe-published-input-only"
 
 
 class _CountingAdapter:
