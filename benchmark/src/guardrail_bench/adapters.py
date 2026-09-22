@@ -13,6 +13,7 @@ import httpx
 from guardrail_bench.models import Message, PredictionError, TaskDefinition, Usage
 
 JEV_INPUT_USD_PER_MILLION_TOKENS = 0.042
+JEV_PRICING_VERSION = "typesafe-published-input-v2026-09-22"
 
 
 def _is_insufficient_funds(exc: Exception) -> bool:

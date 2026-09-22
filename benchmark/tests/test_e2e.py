@@ -139,6 +139,7 @@ async def test_runner_stops_paid_calls_at_reserved_cost_cap(
     assert manifest.cost_reserved_usd == 0.012
     assert manifest.cost_admitted_usd == 0.03
     assert manifest.cost_actual_usd == 0.012
+    assert manifest.pricing_version == "provider-reported+reservation-v2"
     assert manifest.status == "incomplete"
     assert manifest.incomplete_reason is not None
     assert sum(item.error is not None and item.error.kind == "cost_cap" for item in predictions) == 5
