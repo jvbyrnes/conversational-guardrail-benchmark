@@ -188,7 +188,13 @@ def validate_run(directory: Path) -> ValidationReport:
         recomputed, [item.model_dump(mode="json") for item in result.systems], "aggregate.systems"
     ):
         report.reject("aggregate.drift", path)
-    reported_cost = sum(row.cost_usd or 0 for row in predictions if row.cost_status == "reported")
-    if not math.isclose(reported_cost, manifest.cost_actual_usd, rel_tol=1e-9, abs_tol=1e-9):
+    reconciled_cost = sum(row.reconciled_cost_usd for row in predictions)
+    if not math.isclose(reconciled_cost, manifest.cost_actual_usd, rel_tol=1e-9, abs_tol=1e-9):
         report.reject("cost.reported_total_mismatch", "manifest.cost_actual_usd")
+    if any(
+        row.cost_status == "reported"
+        and not math.isclose(row.reconciled_cost_usd, row.cost_usd or 0, rel_tol=1e-9, abs_tol=1e-9)
+        for row in predictions
+    ):
+        report.reject("cost.prediction_reconciliation", "predictions")
     return report

@@ -26,6 +26,7 @@ from guardrail_bench.comparison import (
     dataset_identity,
     evaluated_system_id,
     fingerprint,
+    validate_system_parameters,
 )
 from guardrail_bench.models import StrictModel, SystemMetrics
 from guardrail_bench.validation import (
@@ -74,6 +75,7 @@ class PublicPrediction(PublicModel):
     currency: str | None
     pricing_version: str | None
     cost_method: str | None
+    billing_policy: Literal["all-terminal-attempts"] | None
 
     @model_validator(mode="after")
     def terminal_and_cost(self) -> PublicPrediction:
@@ -81,7 +83,7 @@ class PublicPrediction(PublicModel):
             raise ValueError("exactly one terminal outcome required")
         if (self.cost_usd is None) != (self.cost_status == "unavailable"):
             raise ValueError("cost status mismatch")
-        cost_provenance = (self.currency, self.pricing_version, self.cost_method)
+        cost_provenance = (self.currency, self.pricing_version, self.cost_method, self.billing_policy)
         complete_provenance = all(value is not None for value in cost_provenance)
         absent_provenance = all(value is None for value in cost_provenance)
         if self.cost_usd is not None and not complete_provenance:
@@ -218,25 +220,9 @@ def public_case_id(dataset: DatasetIdentity, source_id: str, key: bytes) -> str:
     return "hmac-sha256:" + hmac.new(key, message, hashlib.sha256).hexdigest()
 
 
-# Adapter implementations accept only these versioned output-affecting knobs.
-SAFE_PARAMETERS = {
-    "fake": set(),
-    "openrouter": {"temperature", "max_tokens", "max_output_tokens", "top_p", "seed"},
-    "jev": {"temperature", "max_tokens", "max_output_tokens", "top_p", "seed"},
-}
-
-
 def _safe_system(system: SystemIdentity) -> None:
-    allowed = SAFE_PARAMETERS.get(system.provider)
-    if allowed is None:
-        allowed = SAFE_PARAMETERS.get(system.adapter_id)
-    if allowed is None or set(system.parameters) - allowed or set(system.adapter_defaults) - allowed:
-        raise ValueError("publication unsafe system parameters")
-    if any(
-        not isinstance(value, (int, float, bool, type(None)))
-        for value in [*system.parameters.values(), *system.adapter_defaults.values()]
-    ):
-        raise ValueError("publication unsafe parameter values")
+    validate_system_parameters(system.adapter_id, system.adapter_version, system.parameters)
+    validate_system_parameters(system.adapter_id, system.adapter_version, system.adapter_defaults)
 
 
 def publish_run(
@@ -293,6 +279,7 @@ def publish_run(
                     "currency": row.currency,
                     "pricing_version": manifest.pricing_version if row.currency is not None else None,
                     "cost_method": row.cost_method,
+                    "billing_policy": row.billing_policy,
                 }
             )
             for row in rows
@@ -533,7 +520,7 @@ def validate_bundle(directory: Path) -> ValidationReport:
                     cost_status=row.cost_status,
                     currency=row.currency,
                     cost_method=row.cost_method,
-                    billing_policy="published-cost-provenance" if row.currency is not None else None,
+                    billing_policy=row.billing_policy,
                     error=PredictionError(kind=row.error, message="") if row.error else None,
                 )
             )
@@ -577,10 +564,11 @@ def validate_bundle(directory: Path) -> ValidationReport:
                         summary.key_fields.cost.currency,
                         summary.key_fields.cost.pricing_version,
                         summary.key_fields.cost.cost_method,
+                        summary.key_fields.cost.billing_policy,
                     )
                 }
                 actual_provenance = {
-                    (row.currency, row.pricing_version, row.cost_method)
+                    (row.currency, row.pricing_version, row.cost_method, row.billing_policy)
                     for row in rows_by_result[result_id]
                     if row.currency is not None
                 }

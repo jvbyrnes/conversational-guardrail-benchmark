@@ -30,6 +30,8 @@ class AdapterResult:
     score: float | None = None
     usage: Usage = field(default_factory=Usage)
     error: PredictionError | None = None
+    # Provider charges accepted by the budget, even when another retry has unknown cost.
+    reconciled_cost_usd: float = 0.0
 
 
 class ModelAdapter(Protocol):
@@ -261,6 +263,7 @@ async def call_with_retry(
             result.decision,
             score=result.score,
             error=result.error,
+            reconciled_cost_usd=sum(attempt.reconciled_cost_usd for attempt in attempts),
             usage=Usage(
                 input_tokens=sum(attempt.usage.input_tokens for attempt in attempts),
                 output_tokens=sum(attempt.usage.output_tokens for attempt in attempts),

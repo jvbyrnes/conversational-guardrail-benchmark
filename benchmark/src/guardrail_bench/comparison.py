@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import math
 import re
 import subprocess
 from pathlib import Path
@@ -91,9 +92,10 @@ def make_evaluation_identity(task: TaskDefinition) -> EvaluationIdentity:
     return EvaluationIdentity(**content, evaluation_id=fingerprint(content), task_version=task.version)
 
 
-SAFE_PARAMETERS: dict[str, set[str]] = {
-    "fake": set(),
-    "openrouter": {
+ADAPTER_VERSION = "1.0.0"
+SAFE_PARAMETERS: dict[tuple[str, str], set[str]] = {
+    ("fake", ADAPTER_VERSION): set(),
+    ("openrouter", ADAPTER_VERSION): {
         "temperature",
         "top_p",
         "max_tokens",
@@ -103,19 +105,37 @@ SAFE_PARAMETERS: dict[str, set[str]] = {
         "presence_penalty",
         "stop",
     },
-    "jev": {"temperature", "top_p", "max_tokens", "seed"},
+    ("jev", ADAPTER_VERSION): {"temperature", "top_p", "max_tokens", "seed"},
 }
 
 
+def validate_system_parameters(kind: str, adapter_version: str, parameters: dict[str, Any]) -> None:
+    """Apply the same versioned parameter contract before inference and publication."""
+    allowed = SAFE_PARAMETERS.get((kind, adapter_version))
+    if allowed is None or set(parameters) - allowed:
+        raise ValueError(f"unsupported output parameters for {kind} adapter version {adapter_version}")
+    for name, value in parameters.items():
+        if value is None:
+            continue
+        if name == "stop":
+            valid = isinstance(value, str) or (
+                isinstance(value, list) and all(isinstance(item, str) for item in value)
+            )
+        elif name in {"max_tokens", "max_completion_tokens", "seed"}:
+            valid = isinstance(value, int) and not isinstance(value, bool) and (name == "seed" or value >= 0)
+        else:
+            valid = isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+        if not valid:
+            raise ValueError(f"unsupported output parameter value for {kind}.{name}")
+
+
 def make_system_identity(config: AdapterConfig) -> SystemIdentity:
-    unsafe = set(config.parameters) - SAFE_PARAMETERS[config.kind]
-    if unsafe:
-        raise ValueError(f"unsupported output parameters for {config.kind}: {', '.join(sorted(unsafe))}")
+    validate_system_parameters(config.kind, ADAPTER_VERSION, config.parameters)
     fake = config.kind == "fake"
     content = SystemFingerprintInput(
         schema_version="1.0.0",
         adapter_id=config.kind,
-        adapter_version="1.0.0",
+        adapter_version=ADAPTER_VERSION,
         provider={"fake": "fixture", "jev": "typesafe", "openrouter": "openrouter"}[config.kind],
         requested_model_id=config.model,
         resolved_snapshot=config.model if fake else None,

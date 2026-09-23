@@ -172,7 +172,10 @@ pricing, maximum input size, output-token limits, and any provider extras.
 Run manifests distinguish `cost_admitted_usd` (the cumulative reservations admitted),
 `cost_reserved_usd` (the current amount held against the cap, including unreconciled
 reservations), and `cost_actual_usd` (valid provider-reported spend). Missing billing
-data remains included in the held amount but is excluded from actual spend.
+data remains included in the held amount but is excluded from actual spend. Each
+prediction also records its reconciled provider charge separately from its nullable
+total cost: a retry can have a known charge while an earlier attempt has unknown
+billing. Validation sums these reconciled charges against the manifest actual spend.
 
 This process-local cap controls which calls the runner admits; it cannot undo a single
 provider charge that violates the configured reservation. Use a dedicated provider key

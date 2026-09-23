@@ -6,9 +6,11 @@ import shutil
 from pathlib import Path
 
 import pytest
-from guardrail_bench.comparison import CodeProvenance, canonical_json
-from guardrail_bench.config import AdapterConfig, load_config
+from guardrail_bench.adapters import AdapterResult
+from guardrail_bench.comparison import CodeProvenance, canonical_json, fingerprint
+from guardrail_bench.config import AdapterConfig, BenchmarkConfig, load_config
 from guardrail_bench.deployment import export_site
+from guardrail_bench.models import PredictionError, Usage
 from guardrail_bench.publication import generate_index, publish_run, validate_bundle
 from guardrail_bench.validation import validate_run
 
@@ -237,3 +239,88 @@ def test_empty_index_has_canonical_empty_source_digest(tmp_path: Path) -> None:
     assert index.as_of is None
     assert index.runs == []
     assert index.source_set_digest == ("sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945")
+
+
+@pytest.mark.asyncio
+async def test_retry_with_unknown_earlier_bill_validates_and_publishes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import guardrail_bench.runner as runner
+
+    class PaidAdapter:
+        adapter_id = "paid"
+        model_id = "provider/model"
+        calls = 0
+
+        async def classify(self, *_: object) -> AdapterResult:
+            self.calls += 1
+            if self.calls == 1:
+                return AdapterResult(
+                    None,
+                    error=PredictionError(kind="rate_limit", message="retry", retryable=True),
+                )
+            return AdapterResult(False, usage=Usage(provider_fields={"cost": 0.004}))
+
+    raw = load_config(ROOT / "benchmark/config/fixture.yaml", output_dir=tmp_path / "raw").model_dump(mode="json")
+    raw["adapters"] = [
+        {
+            "id": "paid",
+            "kind": "openrouter",
+            "model": "provider/model",
+            "parameters": {
+                "max_completion_tokens": 16,
+                "frequency_penalty": 0.1,
+                "presence_penalty": 0,
+                "stop": ["END"],
+            },
+            "cost_reservation_usd": 0.01,
+        }
+    ]
+    raw["execution"].update({"retries": 1, "cost_cap_usd": 0.2})
+    config = BenchmarkConfig.model_validate(raw)
+    monkeypatch.setattr(runner, "_adapter", lambda _: PaidAdapter())
+    monkeypatch.setattr(
+        runner,
+        "capture_code_provenance",
+        lambda: CodeProvenance(
+            repository="https://example.test/benchmark.git",
+            commit_revision="a" * 40,
+            committed_tree_digest="b" * 40,
+            working_tree_state="clean",
+        ),
+    )
+
+    manifest, rows, _ = await runner.run(config)
+    assert manifest.cost_actual_usd == pytest.approx(0.032)
+    assert rows[0].cost_usd is None
+    assert rows[0].reconciled_cost_usd == pytest.approx(0.004)
+    assert rows[1].cost_usd == rows[1].reconciled_cost_usd == pytest.approx(0.004)
+    source = config.output_dir / manifest.run_id
+    assert validate_run(source).valid
+    bundle = publish_run(source, tmp_path / "published", pseudonym_key=b"fixture-key", pseudonym_key_id="fixture-v1")
+    assert validate_bundle(bundle).valid
+    tampered = tmp_path / "tampered-raw"
+    shutil.copytree(source, tampered)
+    lines = (tampered / "predictions.jsonl").read_text().splitlines()
+    first = json.loads(lines[0])
+    first["reconciled_cost_usd"] = 0
+    lines[0] = json.dumps(first)
+    (tampered / "predictions.jsonl").write_text("\n".join(lines) + "\n")
+    assert "cost.reported_total_mismatch" in {issue.rule_id for issue in validate_run(tampered).errors}
+
+
+@pytest.mark.asyncio
+async def test_public_billing_policy_is_checked_against_predictions(publishable_run: Path, tmp_path: Path) -> None:
+    bundle = publish_run(
+        publishable_run, tmp_path / "published", pseudonym_key=b"fixture-key", pseudonym_key_id="fixture-v1"
+    )
+    tampered = tmp_path / "tampered" / bundle.name
+    tampered.parent.mkdir()
+    shutil.copytree(bundle, tampered)
+    manifest = json.loads((tampered / "manifest.json").read_text())
+    summary = manifest["summaries"][0]
+    summary["key_fields"]["cost"]["billing_policy"] = "changed-policy"
+    summary["cost_key"] = fingerprint(summary["key_fields"]["cost"])
+    (tampered / "manifest.json").write_text(json.dumps(manifest))
+    rewrite_checksum(tampered, "manifest.json")
+    assert "comparison.cost_provenance" in {issue.rule_id for issue in validate_bundle(tampered).errors}

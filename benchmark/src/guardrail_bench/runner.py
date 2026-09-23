@@ -151,6 +151,7 @@ async def run(
             evaluation_id=evaluation.evaluation_id,
             evaluated_system_id=evaluated_system_id(system.system_id, evaluation.evaluation_id),
             cost_usd=float(cost) if cost is not None else None,
+            reconciled_cost_usd=result.reconciled_cost_usd,
             cost_status=("reported" if "cost" in fields else "estimated") if known_cost else "unavailable",
             currency="USD",
             cost_method=cost_method,

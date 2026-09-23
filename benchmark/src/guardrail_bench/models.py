@@ -83,6 +83,7 @@ class Prediction(StrictModel):
     evaluation_id: str | None = None
     evaluated_system_id: str | None = None
     cost_usd: float | None = Field(default=None, ge=0)
+    reconciled_cost_usd: float = Field(default=0, ge=0)
     cost_status: Literal["reported", "estimated", "unavailable"] = "unavailable"
     currency: str | None = None
     cost_method: str | None = None
