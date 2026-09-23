@@ -1,19 +1,10 @@
 <!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Conversational Guardrail Benchmark</title>
-  <link rel="stylesheet" href="styles.css">
-</head>
-<body>
-  <main>
-    <header><p class="eyebrow">OPEN BENCHMARK</p><h1>Conversational guardrails,<br>measured in public.</h1><p id="subtitle">Loading the latest result…</p></header>
-    <section id="status" aria-live="polite"></section>
-    <section><h2>System comparison</h2><div id="systems" class="grid"></div></section>
-    <section><h2>Reproduce this run</h2><dl id="metadata" class="metadata"></dl></section>
-    <section><h2>Downloads</h2><nav><a href="../results/published/latest/aggregate.json">Aggregate JSON</a><a href="../results/published/latest/predictions.jsonl">Per-example JSONL</a><a href="../results/published/latest/predictions.csv">Per-example CSV</a></nav></section>
-  </main>
-  <script src="app.js"></script>
-</body>
-</html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Conversational Guardrail Benchmark</title><link rel="stylesheet" href="styles.css"></head>
+<body><main>
+<header><p class="eyebrow">OPEN BENCHMARK</p><h1>Conversational guardrails,<br>measured in public.</h1><p id="subtitle">Loading published results…</p></header>
+<section id="status" aria-live="polite"></section>
+<section id="controls" hidden><h2>Select results</h2><div class="filters"><label>Task and version <select id="task"></select></label><label>Comparison cohort <select id="cohort"></select></label></div><p>Defaults use the latest complete, valid publication run per evaluated system and quality key; ties use the greatest lexicographic run ID. Every alternative remains selectable. Shared URLs pin exact runs.</p><div id="choices" class="grid"></div><label>Reference for deltas <select id="reference"></select></label></section>
+<section><h2>System comparison</h2><div id="systems" class="scroll"></div><div id="compatibility"></div></section>
+<section id="explorer" hidden><h2>Case explorer</h2><p>Only pseudonymous public case IDs are shown. Detail is limited to the first four selected results; the summary includes every selection.</p><div class="filters"><label>Source label <select id="label"><option value="">All labels</option></select></label><label>Cases <select id="filter"><option value="all">All</option><option value="disagreement">Disagreements</option><option value="correct">Any correct prediction</option><option value="incorrect">Any incorrect prediction</option><option value="error">Provider errors</option></select></label><label>Sort <select id="sort"><option value="disagreement">Disagreement first</option><option value="score">Highest score</option><option value="latency_ms">Highest latency</option><option value="cost_usd">Highest known cost</option></select></label></div><p id="case-count"></p><div id="cases" class="scroll"></div></section>
+<section><h2>Provenance and downloads</h2><div id="metadata"></div></section>
+</main><script src="app.js"></script></body></html>

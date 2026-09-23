@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
-import subprocess
 from collections import Counter
 from collections.abc import Coroutine
 from datetime import UTC, datetime
@@ -17,8 +16,23 @@ from guardrail_bench.adapters import (
     OpenRouterAdapter,
     call_with_retry,
 )
-from guardrail_bench.artifacts import append_checkpoint, create_checkpoint, finish_checkpoint, write_artifacts
+from guardrail_bench.artifacts import (
+    append_checkpoint,
+    create_checkpoint,
+    finish_checkpoint,
+    write_artifacts,
+    write_private_cohort,
+)
 from guardrail_bench.budget import CostBudget
+from guardrail_bench.comparison import (
+    CohortMember,
+    PrivateCohort,
+    capture_code_provenance,
+    dataset_identity,
+    evaluated_system_id,
+    make_evaluation_identity,
+    make_system_identity,
+)
 from guardrail_bench.config import AdapterConfig, BenchmarkConfig
 from guardrail_bench.dataset import load_wildjailbreak
 from guardrail_bench.metrics import aggregate
@@ -41,13 +55,6 @@ def _adapter(config: AdapterConfig) -> ModelAdapter:
     if config.kind == "openrouter":
         return OpenRouterAdapter(config.id, config.model, config.parameters)
     raise ValueError(f"unsupported adapter kind: {config.kind}")
-
-
-def _git_revision() -> str:
-    try:
-        return subprocess.check_output(["git", "rev-parse", "HEAD"], text=True, stderr=subprocess.DEVNULL).strip()
-    except (OSError, subprocess.CalledProcessError):
-        return "unknown"
 
 
 def _estimated_cost(result: Any) -> float:
@@ -75,13 +82,13 @@ async def run(
     )
     if duplicate_ids:
         raise ValueError(f"duplicate enabled adapter IDs: {', '.join(duplicate_ids)}")
-    budget = (
-        CostBudget.from_float(config.execution.cost_cap_usd)
-        if config.execution.cost_cap_usd is not None
-        else None
-    )
+    budget = CostBudget.from_float(config.execution.cost_cap_usd) if config.execution.cost_cap_usd is not None else None
 
     task = get_task(config.task)
+    evaluation = make_evaluation_identity(task)
+    systems = {item.id: make_system_identity(item) for item in enabled}
+    if len({system.system_id for system in systems.values()}) != len(systems):
+        raise ValueError("duplicate configured system identities")
     examples, dataset_metadata = load_wildjailbreak(config.dataset)
     selected, strata = stratified_sample(examples, task, config.sample.rate, config.sample.seed)
     identity = json.dumps(
@@ -97,8 +104,23 @@ async def run(
         },
         sort_keys=True,
     )
-    run_id = f"{started:%Y%m%dT%H%M%SZ}-{hashlib.sha256(identity.encode()).hexdigest()[:12]}"
+    run_id = f"{started:%Y%m%dT%H%M%S%fZ}-{hashlib.sha256(identity.encode()).hexdigest()[:12]}"
     run_directory = config.output_dir / run_id
+    cohort = PrivateCohort(
+        dataset=dataset_identity(dataset_metadata),
+        members=[
+            CohortMember(
+                source_id=example.source_id,
+                source_label=example.source_label,
+                ground_truth=bool(task.ground_truth(example.source_label)),
+            )
+            for example in sorted(selected, key=lambda example: example.source_id)
+        ],
+    )
+    code_provenance = capture_code_provenance()
+    expected_predictions = len(selected) * len(enabled)
+    create_checkpoint(run_directory, run_id, expected_predictions, started)
+    write_private_cohort(run_directory, cohort)
 
     async def classify(adapter: ModelAdapter, adapter_config: AdapterConfig, example_index: int) -> Prediction:
         example = selected[example_index]
@@ -111,7 +133,29 @@ async def run(
             budget=budget if adapter_config.kind != "fake" else None,
             cost_reservation_usd=adapter_config.cost_reservation_usd,
         )
+        system = systems[adapter_config.id]
+        fields = result.usage.provider_fields
+        cost = fields.get("cost", fields.get("estimated_cost"))
+        if adapter_config.kind == "fake":
+            cost = 0.0
+        known_cost = cost is not None
+        cost_method = (
+            "fixture-free"
+            if adapter_config.kind == "fake"
+            else "provider-reported"
+            if adapter_config.kind == "openrouter"
+            else "input-token-estimate"
+        )
         return Prediction(
+            system_id=system.system_id,
+            evaluation_id=evaluation.evaluation_id,
+            evaluated_system_id=evaluated_system_id(system.system_id, evaluation.evaluation_id),
+            cost_usd=float(cost) if cost is not None else None,
+            reconciled_cost_usd=result.reconciled_cost_usd,
+            cost_status=("reported" if "cost" in fields else "estimated") if known_cost else "unavailable",
+            currency="USD",
+            cost_method=cost_method,
+            billing_policy="all-terminal-attempts",
             run_id=run_id,
             source_id=example.source_id,
             source_label=example.source_label,
@@ -129,8 +173,6 @@ async def run(
         )
 
     adapters = [(_adapter(item), item) for item in enabled]
-    expected_predictions = len(selected) * len(adapters)
-    create_checkpoint(run_directory, run_id, expected_predictions, started)
     if progress is not None:
         progress.start(expected_predictions)
     checkpoint_lock = asyncio.Lock()
@@ -178,12 +220,28 @@ async def run(
     incomplete_reason = (
         insufficient_funds.message
         if insufficient_funds is not None
-        else blocking_errors[0].message if blocking_errors else None
+        else blocking_errors[0].message
+        if blocking_errors
+        else None
     )
     status: Literal["complete", "incomplete"] = "incomplete" if incomplete_reason is not None else "complete"
     manifest = RunManifest(
         run_id=run_id,
-        code_revision=_git_revision(),
+        code_revision=code_provenance.commit_revision or "unknown",
+        code_provenance=code_provenance,
+        evaluation=evaluation,
+        systems=systems,
+        private_cohort_digest=cohort.digest,
+        execution_provenance={
+            "timing_definition_version": "request-attempts-excluding-backoff-v1",
+            "execution_mode": "async-batched",
+            "concurrency": config.execution.concurrency,
+            "retry_policy": f"exponential-100ms-cap1s;retries={config.execution.retries}",
+            "timeout_policy": f"per-attempt-seconds={config.execution.timeout_seconds}",
+            "routing_region_class": config.execution.routing_region_class
+            or ("local-fixture" if all(item.kind == "fake" for item in enabled) else None),
+            "warmup_policy": config.execution.warmup_policy,
+        },
         dataset=dataset_metadata,
         task_id=task.task_id,
         classifier_version=task.version,

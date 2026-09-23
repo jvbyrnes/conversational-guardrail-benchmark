@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import math
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from decimal import Decimal, InvalidOperation
 
 from guardrail_bench.adapters import AdapterResult, ModelAdapter
@@ -109,10 +109,11 @@ class CostBudget:
                     f"provider-reported cost {reported} USD exceeded the configured "
                     f"{reservation} USD reservation; no further paid calls were started"
                 )
-                return self._error(self._breach, result), latency_ms
+                return self._error(self._breach, result, reconciled_cost_usd=float(reported)), latency_ms
             if reported is not None:
                 self.reserved_usd -= reservation - reported
                 self.actual_usd += reported
+                result = replace(result, reconciled_cost_usd=float(reported))
             return result, latency_ms
 
     @staticmethod
@@ -121,18 +122,18 @@ class CostBudget:
         result: AdapterResult | None = None,
         *,
         sanitize_reported_cost: bool = False,
+        reconciled_cost_usd: float = 0.0,
     ) -> AdapterResult:
         usage = result.usage if result is not None else Usage()
         if sanitize_reported_cost:
             usage = usage.model_copy(
                 update={
-                    "provider_fields": {
-                        key: value for key, value in usage.provider_fields.items() if key != "cost"
-                    }
+                    "provider_fields": {key: value for key, value in usage.provider_fields.items() if key != "cost"}
                 }
             )
         return AdapterResult(
             None,
             usage=usage,
             error=PredictionError(kind="cost_cap", message=message),
+            reconciled_cost_usd=reconciled_cost_usd,
         )

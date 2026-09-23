@@ -38,6 +38,7 @@ async def test_offline_end_to_end(tmp_path: Path) -> None:
     assert manifest.wall_clock_duration_ms >= 0
     assert len(predictions) == 8
     assert {path.name for path in directory.iterdir()} == {
+        "cohort.json",
         "manifest.json",
         "aggregate.json",
         "predictions.jsonl",
@@ -104,9 +105,7 @@ async def test_runner_reports_progress_for_every_prediction(tmp_path: Path) -> N
 
 
 @pytest.mark.asyncio
-async def test_runner_stops_paid_calls_at_reserved_cost_cap(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+async def test_runner_stops_paid_calls_at_reserved_cost_cap(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     class PaidAdapter:
         adapter_id = "paid"
         model_id = "provider/model"

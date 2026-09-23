@@ -11,7 +11,7 @@ The project will evaluate four binary classification tasks:
 3. Abuse disclosures — SonderMind Guardrail Evals
 4. Financial-advice detection — FinSafeGuard
 
-Implementation proceeds in that order. The first change is an end-to-end WildJailbreak vertical slice: dataset loading, deterministic sampling, model execution, metrics, result artifacts, and a minimal public results page.
+Implementation proceeds in that order. WildJailbreak supports dataset loading, deterministic sampling, model execution, durable evidence, validated public bundles, and a static multi-run comparison page.
 
 ## Local development
 
@@ -41,6 +41,105 @@ Run the static result viewer from the repository root:
 python -m http.server 8000
 # open http://localhost:8000/site/
 ```
+
+The viewer discovers `results/published/index.json`. An empty catalogue displays an
+explicit no-results state. The legacy `results/published/latest/` directory is retained
+for old consumers; it is not a discovery source or part of the deployable export.
+
+## Validation and multi-run comparison
+
+Run the offline fixture, then inspect its publication eligibility:
+
+```bash
+uv run guardrail-bench --config benchmark/config/fixture.yaml
+uv run guardrail-bench validate results/runs/<run-id>
+```
+
+Each new run persists its authoritative selected cohort before inference and records
+configured-system and task-content identities. Git commit, committed tree, and working
+tree status are captured immediately before execution. A modified, untracked, staged,
+or unavailable source tree makes the run preview-only. Commit the implementation and
+use a clean checkout before generating evidence intended for public comparison.
+Validation also checks expected cohort-by-system coverage, duplicates, identities,
+aggregate reconstruction, and cost provenance. Provider errors remain terminal rows
+and reduce coverage; they never become negative decisions.
+
+To publish a validated run, provision a stable secret in `GUARDRAIL_PSEUDONYM_KEY`
+through your environment or secret manager, then run:
+
+```bash
+uv run guardrail-bench publish results/runs/<run-id> --pseudonym-key-id production-v1
+uv run guardrail-bench index
+uv run guardrail-bench validate results/published/runs/<run-id> --public
+```
+
+The key is required and never written into public artifacts. Keep it stable within
+the named namespace; intentional rotation must use a new key ID. Rotation changes
+public case IDs and cohort compatibility. Public records contain HMAC pseudonyms,
+approved labels, typed error categories, standardized usage, timing and nullable cost.
+Source IDs, conversations, provider payloads, free-form errors and credentials remain
+private. Publication preserves the original evidence and rejects a conflicting bundle
+at an existing run path. Index generation is separate and deterministic: timestamps
+come from immutable publication metadata, and every bundle file is checksummed.
+
+Create a sanitized local catalogue for runs excluded from publication:
+
+```bash
+uv run guardrail-bench index --preview-root results/preview --source results/runs/<run-id>
+# Open http://localhost:8000/site/?preview=1
+```
+
+Preview metadata contains safe validation summaries; invalid evidence does not gain
+public artifact links. Do not deploy the repository root. Build a fresh static export
+that validates indexed artifacts and includes only the viewer and public bundles:
+
+```bash
+uv run guardrail-bench export-site /tmp/guardrail-public-site
+python -m http.server 8000 --directory /tmp/guardrail-public-site
+# Open http://localhost:8000/site/
+```
+
+The exporter excludes `results/preview/`, raw runs, the legacy alias, and all other
+repository files. It refuses an existing output directory or a checksum mismatch.
+It prepares all files before atomically creating the destination.
+
+In the viewer, select a task/cohort, then two or more systems and an explicit reference.
+Shared URLs pin exact run IDs. Duplicate results default to the latest completed valid
+publication run, with a lexicographic run-ID tie break; alternatives remain selectable.
+Quality, cost, and latency have independent eligibility and compatibility checks.
+Different cohorts or task definitions disable all three comparisons; pricing or
+execution differences disable only the relevant family. Missing cost is unavailable,
+never zero. Case filters expose disagreements, correctness, errors and source strata
+without exposing upstream conversation text. Provenance panels explain each result.
+
+## Legacy migration and schema policy
+
+Migration is a dry run by default. It must replay the recorded selection against the
+pinned dataset using the known sampler; predictions cannot supply the expected cohort.
+The checked-in legacy fixture demonstrates the compatibility report:
+
+```bash
+uv run guardrail-bench migrate results/published/latest --config benchmark/config/fixture.yaml
+```
+
+It currently reports `migration.dataset_mismatch`: the fixture's observed schema has
+changed since that artifact was recorded, so its authoritative cohort cannot be
+replayed safely. For a compatible v1 run, review the dry-run report and then add
+`--write` to create preview-only normalized evidence.
+
+Written migration output defaults to `results/preview/migrated/`. The original files
+remain byte-for-byte unchanged. Historical snapshot or working-tree evidence is never
+invented. An unexplained legacy zero cost becomes null/unavailable, and missing clean
+code evidence keeps the migration preview-only. Compatibility failures report which
+independent evidence is needed. A dry run does not start inference.
+
+Raw evidence, normalized comparison contracts, and catalogue schemas are versioned
+independently. Readers reject unsupported major versions and unknown fields. Changes
+to the meaning of normalized artifacts require a semantics-major change; post-hoc
+metric changes alter metric compatibility, while prompt, label-map, threshold and
+parser changes alter evaluation identity. Configured-system fingerprints include known
+output-affecting parameters and versioned adapter defaults. Identity bytes use RFC 8785
+canonical JSON and SHA-256, preserving explicit nulls and array order.
 
 For a live run, copy `benchmark/config/live.example.yaml`, accept the WildJailbreak
 dataset's AI2 Responsible Use Guidelines on Hugging Face, then authenticate locally:
@@ -73,7 +172,10 @@ pricing, maximum input size, output-token limits, and any provider extras.
 Run manifests distinguish `cost_admitted_usd` (the cumulative reservations admitted),
 `cost_reserved_usd` (the current amount held against the cap, including unreconciled
 reservations), and `cost_actual_usd` (valid provider-reported spend). Missing billing
-data remains included in the held amount but is excluded from actual spend.
+data remains included in the held amount but is excluded from actual spend. Each
+prediction also records its reconciled provider charge separately from its nullable
+total cost: a retry can have a known charge while an earlier attempt has unknown
+billing. Validation sums these reconciled charges against the manifest actual spend.
 
 This process-local cap controls which calls the runner admits; it cannot undo a single
 provider charge that violates the configured reservation. Use a dedicated provider key
@@ -109,11 +211,11 @@ Do not put secrets in YAML. `.env` is ignored, but the runner does not load it i
 - **Sampling:** each stratum receives `floor(size × rate)` rows. A run is rejected instead of silently rounding an empty stratum up to one, so the configured rate remains honest.
 - **Jev integration:** the adapter uses Jev's typed `adecide` contract and preserves unavailable probability/usage fields as absent/zero rather than inventing them. The optional import is lazy so the offline suite remains dependency-free. Jev's package support changes independently, so a minimal paid smoke test is required after installing a compatible release.
 - **LLM baseline:** OpenRouter's OpenAI-compatible Chat Completions API is the sole general-purpose baseline. The semantic task question is passed unchanged as the system instruction; only provider serialization differs.
-- **Errors and cost:** exhausted errors remain typed records and are excluded from classification metrics. Coverage exposes their impact. Unknown model pricing produces a zero estimate; raw token usage is retained so costs can be recomputed after adding a versioned price.
+- **Errors and cost:** exhausted errors remain typed records and are excluded from classification metrics. Coverage exposes their impact. Public costs are nullable with explicit provenance and known-cost coverage; raw usage remains available privately for reproducible recalculation.
 - **Jev cost estimation:** Jev reports token counts rather than a billed dollar amount. The runner estimates Jev spend from the published $0.042 per million input-token rate, records that estimate separately from provider-reported actual cost, and retains reservations when token usage is unavailable. Gateway markup is not included in this estimate.
 - **Live cost gate:** paid adapters require a run cap and conservative per-attempt reservations. The cap must cover one fully retried attempt for every enabled paid adapter, and every retry reserves again. Trustworthy provider-reported costs reconcile reservations to actual spend; missing or invalid billing data remains held fail-closed. Provider-reported overages and insufficient-funds responses stop later paid calls and mark the run incomplete.
 - **Durable interruption state:** the runner creates `run-status.json` before adapter execution and fsyncs each completed prediction to `predictions.partial.jsonl`. Normal artifacts are still written for cap- or funds-stopped runs, but both their manifest and checkpoint are marked `incomplete` with a reason. An unexpected interruption leaves the already-checkpointed predictions available for diagnosis.
-- **Publication:** `rate == 1.0` alone marks a publication run, matching the OpenSpec decision. The static site never launches evaluations and only reads checked-in artifacts.
+- **Publication:** `rate == 1.0` marks the run kind as publication. Eligibility additionally requires complete, valid, safe evidence from a clean source tree. Valid exploratory runs remain prominently labelled. The static site never launches evaluations.
 
 ## Terminology and implementation details
 
@@ -144,9 +246,9 @@ Do not put secrets in YAML. `.env` is ignored, but the runner does not load it i
 - **The fake adapter** is a deterministic, offline-only test double. It recognizes
   markers in synthetic fixtures so runner, metrics, and artifact tests do not spend
   money or contact a provider; it is not a benchmarked guardrail.
-- **Cost estimation** multiplies provider-reported input and output token counts by
-  the versioned per-million-token prices, then sums predictions. Unknown prices yield
-  zero rather than a fabricated estimate, while retaining raw usage.
+- **Cost estimation** uses recorded usage and versioned pricing. Public aggregate cost
+  is unavailable if any relevant row has unknown cost; known count and coverage remain
+  visible. Legacy numeric estimate fields are not proof of known billing.
 - **Cost reservations versus estimates:** reservations are conservative dispatch
   accounting and are recorded separately from provider-reported prediction cost. They
   are not substituted for missing provider cost, so aggregate cost remains evidence-
@@ -186,6 +288,7 @@ Install OpenSpec with Node.js 20.19 or newer:
 ```bash
 npm install -g @fission-ai/openspec@latest
 openspec validate wildjailbreak-vertical-slice
+openspec validate multi-run-benchmark-comparison --strict
 ```
 
 Review the active change and its remaining live-verification tasks in `openspec/changes/wildjailbreak-vertical-slice/` before running paid adapters.

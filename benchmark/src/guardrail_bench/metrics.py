@@ -23,11 +23,11 @@ def _percentile(values: list[float], probability: float) -> float | None:
 
 
 def aggregate(predictions: list[Prediction]) -> list[SystemMetrics]:
-    groups: dict[tuple[str, str], list[Prediction]] = defaultdict(list)
+    groups: dict[tuple[str, str, str], list[Prediction]] = defaultdict(list)
     for prediction in predictions:
-        groups[(prediction.adapter_id, prediction.model_id)].append(prediction)
+        groups[(prediction.adapter_id, prediction.model_id, prediction.evaluated_system_id or "")].append(prediction)
     results = []
-    for (adapter_id, model_id), records in sorted(groups.items()):
+    for (adapter_id, model_id, _), records in sorted(groups.items()):
         successful = [record for record in records if record.error is None]
         tp = sum(record.decision is True and record.ground_truth for record in successful)
         tn = sum(record.decision is False and not record.ground_truth for record in successful)
@@ -36,10 +36,13 @@ def aggregate(predictions: list[Prediction]) -> list[SystemMetrics]:
         precision = _ratio(tp, tp + fp)
         recall = _ratio(tp, tp + fn)
         latencies = [record.latency_ms for record in successful]
-        total_cost = sum(record.estimated_cost_usd for record in records)
+        known_costs = [record.cost_usd for record in records if record.cost_usd is not None]
+        total_cost = sum(known_costs) if len(known_costs) == len(records) else None
         results.append(
             SystemMetrics(
                 adapter_id=adapter_id,
+                system_id=records[0].system_id,
+                evaluated_system_id=records[0].evaluated_system_id,
                 model_id=model_id,
                 attempted=len(records),
                 successful=len(successful),
@@ -53,7 +56,11 @@ def aggregate(predictions: list[Prediction]) -> list[SystemMetrics]:
                 latency_p50_ms=_percentile(latencies, 0.5),
                 latency_p95_ms=_percentile(latencies, 0.95),
                 total_cost_usd=total_cost,
-                cost_per_1000_examples_usd=_ratio(total_cost * 1000, len(records)),
+                cost_per_1000_examples_usd=(None if total_cost is None else _ratio(total_cost * 1000, len(records))),
+                cost_known_count=len(known_costs),
+                cost_coverage=_ratio(len(known_costs), len(records)),
+                input_tokens=sum(record.usage.input_tokens for record in records),
+                output_tokens=sum(record.usage.output_tokens for record in records),
             )
         )
     return results

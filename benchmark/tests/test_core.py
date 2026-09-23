@@ -78,9 +78,7 @@ def test_live_dataset_loader_uses_streaming(monkeypatch: pytest.MonkeyPatch) -> 
 
     class FakeDataset:
         def __iter__(self):
-            return iter(
-                [{"id": "a", "data_type": "adversarial_harmful", "adversarial": "prompt"}]
-            )
+            return iter([{"id": "a", "data_type": "adversarial_harmful", "adversarial": "prompt"}])
 
     def fake_load_dataset(*args: object, **kwargs: object) -> FakeDataset:
         calls.update(kwargs)
@@ -175,6 +173,17 @@ def test_metrics_ignore_errors_and_round_trip() -> None:
     assert Prediction.model_validate_json(records[0].model_dump_json()) == records[0]
 
 
+def test_prediction_rejects_nonfinite_values_and_ambiguous_cost() -> None:
+    nonfinite = prediction("1", True, True).model_dump(mode="json")
+    nonfinite["latency_ms"] = float("nan")
+    with pytest.raises(ValidationError):
+        Prediction.model_validate(nonfinite)
+    raw = prediction("1", True, True).model_dump(mode="json")
+    raw.update({"cost_status": "reported", "cost_usd": None})
+    with pytest.raises(ValidationError, match="known cost status"):
+        Prediction.model_validate(raw)
+
+
 def test_config_round_trip() -> None:
     config = load_config(ROOT / "benchmark/config/fixture.yaml")
     assert BenchmarkConfig.model_validate_json(config.model_dump_json()) == config
@@ -196,6 +205,7 @@ def test_jev_pricing_version_is_manifested() -> None:
     assert "typesafe-published-input-v2026-09-22" in _pricing_version(
         [AdapterConfig(id="jev", kind="jev", model="jev-latest", cost_reservation_usd=0.005)]
     )
+
 
 def test_cost_cap_covers_one_fully_retried_attempt_per_paid_adapter() -> None:
     raw = load_config(ROOT / "benchmark/config/fixture.yaml").model_dump(mode="json")

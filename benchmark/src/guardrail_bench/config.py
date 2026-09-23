@@ -44,6 +44,8 @@ class AdapterConfig(ConfigModel):
 
 
 class ExecutionConfig(ConfigModel):
+    routing_region_class: str | None = None
+    warmup_policy: Literal["none"] = "none"
     concurrency: int = Field(default=4, ge=1, le=100)
     retries: int = Field(default=2, ge=0, le=10)
     timeout_seconds: float = Field(default=30, gt=0)

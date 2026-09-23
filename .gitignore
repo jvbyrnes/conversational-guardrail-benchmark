@@ -8,6 +8,7 @@ __pycache__/
 .coverage
 data/
 results/runs/
+results/preview/
 !results/published/
 
 benchmark/config/live.yaml

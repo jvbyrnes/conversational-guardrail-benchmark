@@ -30,6 +30,8 @@ class AdapterResult:
     score: float | None = None
     usage: Usage = field(default_factory=Usage)
     error: PredictionError | None = None
+    # Provider charges accepted by the budget, even when another retry has unknown cost.
+    reconciled_cost_usd: float = 0.0
 
 
 class ModelAdapter(Protocol):
@@ -109,9 +111,7 @@ class OpenRouterAdapter:
                     "https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload
                 )
         except httpx.RequestError as exc:
-            return AdapterResult(
-                None, error=PredictionError(kind="provider", message=str(exc), retryable=True)
-            )
+            return AdapterResult(None, error=PredictionError(kind="provider", message=str(exc), retryable=True))
         if response.status_code == 429:
             return AdapterResult(
                 None, error=PredictionError(kind="rate_limit", message="provider rate limit", retryable=True)
@@ -176,9 +176,7 @@ class JevAdapter:
             "conversation": [m.model_dump(mode="json") for m in conversation],
         }
         try:
-            async with AsyncTypeSafeClient(
-                api_key=os.environ["TYPESAFE_API_KEY"], model=self.model_id
-            ) as client:
+            async with AsyncTypeSafeClient(api_key=os.environ["TYPESAFE_API_KEY"], model=self.model_id) as client:
                 response = await client.system_one(
                     state=state,
                     questions={"decision": {"type": "noul", "instructions": task.question}},
@@ -188,7 +186,7 @@ class JevAdapter:
             score = float(answer.noul)
             usage = response.usage
             return AdapterResult(
-                score >= 0.5,
+                score >= task.decision_threshold,
                 score=score,
                 usage=Usage(
                     input_tokens=usage.input_tokens or 0,
@@ -221,6 +219,7 @@ async def call_with_retry(
 ) -> tuple[AdapterResult, float]:
     result: AdapterResult | None = None
     request_latency_ms = 0.0
+    attempts: list[AdapterResult] = []
     for attempt in range(retries + 1):
         if budget is None:
             attempt_started = time.perf_counter()
@@ -245,8 +244,30 @@ async def call_with_retry(
                 timeout_seconds,
             )
             request_latency_ms += attempt_latency_ms
+        attempts.append(result)
         if result.error is None or not result.error.retryable or attempt == retries:
             break
         await asyncio.sleep(min(0.1 * (2**attempt), 1.0))
     assert result is not None
+    if len(attempts) > 1:
+        fields = dict(result.usage.provider_fields)
+        # Every attempt contributes usage. A final successful call cannot conceal
+        # unknown billing from a timeout or failed earlier attempt.
+        for cost_field in ("cost", "estimated_cost"):
+            costs = [attempt.usage.provider_fields.get(cost_field) for attempt in attempts]
+            if all(isinstance(value, (int, float)) and not isinstance(value, bool) for value in costs):
+                fields[cost_field] = sum(float(value) for value in costs if value is not None)
+            else:
+                fields.pop(cost_field, None)
+        result = AdapterResult(
+            result.decision,
+            score=result.score,
+            error=result.error,
+            reconciled_cost_usd=sum(attempt.reconciled_cost_usd for attempt in attempts),
+            usage=Usage(
+                input_tokens=sum(attempt.usage.input_tokens for attempt in attempts),
+                output_tokens=sum(attempt.usage.output_tokens for attempt in attempts),
+                provider_fields=fields,
+            ),
+        )
     return result, request_latency_ms
