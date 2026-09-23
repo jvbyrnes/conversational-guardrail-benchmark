@@ -61,15 +61,34 @@ def load_wildjailbreak(config: DatasetConfig) -> tuple[list[SourceExample], Data
             load_dataset = importlib.import_module("datasets").load_dataset
         except ImportError as exc:
             raise RuntimeError("install the 'dataset' extra to load WildJailbreak") from exc
-        # Stream the TSV-backed dataset so Arrow does not infer a single column type
-        # from an early batch and then fail when later rows contain text values.
-        dataset = load_dataset(
-            config.name,
-            config.config_name,
-            split=config.split,
-            revision=config.revision,
-            streaming=True,
-        )
+        # Stream the TSV so Arrow does not infer a single column type from an
+        # early batch and then fail when later rows contain text values.
+        if config.source == "cached":
+            try:
+                hf_hub_download = importlib.import_module("huggingface_hub").hf_hub_download
+                cached_path = hf_hub_download(
+                    repo_id=config.name,
+                    repo_type="dataset",
+                    filename="train/train.tsv",
+                    revision=config.revision,
+                    local_files_only=True,
+                )
+            except FileNotFoundError as exc:
+                raise RuntimeError(
+                    "pinned WildJailbreak train/train.tsv is not in the Hugging Face cache; "
+                    "use dataset.source: stream to fetch it first"
+                ) from exc
+            dataset = load_dataset(
+                "csv", data_files={config.split: cached_path}, delimiter="\t", split=config.split, streaming=True
+            )
+        else:
+            dataset = load_dataset(
+                config.name,
+                config.config_name,
+                split=config.split,
+                revision=config.revision,
+                streaming=True,
+            )
         rows = [dict(row) for row in dataset]
     if not rows:
         raise ValueError("dataset is empty")

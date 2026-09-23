@@ -97,6 +97,77 @@ def test_live_dataset_loader_uses_streaming(monkeypatch: pytest.MonkeyPatch) -> 
     assert calls["streaming"] is True
 
 
+def test_cached_live_loader_uses_pinned_local_tsv(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    path = tmp_path / "train.tsv"
+    path.write_text("vanilla\tadversarial\tcompletion\tdata_type\n")
+    hub_calls: dict[str, object] = {}
+    dataset_calls: dict[str, object] = {}
+
+    class FakeDataset:
+        def __iter__(self):
+            return iter(
+                [{"vanilla": "", "adversarial": "prompt", "completion": "", "data_type": "adversarial_harmful"}]
+            )
+
+    def fake_hf_hub_download(**kwargs: object) -> str:
+        hub_calls.update(kwargs)
+        return str(path)
+
+    def fake_load_dataset(*args: object, **kwargs: object) -> FakeDataset:
+        dataset_calls["path"] = args[0]
+        dataset_calls.update(kwargs)
+        return FakeDataset()
+
+    monkeypatch.setitem(sys.modules, "huggingface_hub", ModuleType("huggingface_hub"))
+    sys.modules["huggingface_hub"].hf_hub_download = fake_hf_hub_download  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "datasets", ModuleType("datasets"))
+    sys.modules["datasets"].load_dataset = fake_load_dataset  # type: ignore[attr-defined]
+    config = DatasetConfig(
+        name="allenai/wildjailbreak",
+        revision="5ddc12a7894f842b0619b8e1c7ee496b198af009",
+        config_name="train",
+        split="train",
+        source="cached",
+    )
+
+    examples, _ = load_wildjailbreak(config)
+
+    assert len(examples) == 1
+    assert hub_calls == {
+        "repo_id": config.name,
+        "repo_type": "dataset",
+        "filename": "train/train.tsv",
+        "revision": config.revision,
+        "local_files_only": True,
+    }
+    assert dataset_calls == {
+        "path": "csv",
+        "data_files": {"train": str(path)},
+        "delimiter": "\t",
+        "split": "train",
+        "streaming": True,
+    }
+
+
+def test_cached_live_loader_fails_if_file_is_absent(monkeypatch: pytest.MonkeyPatch) -> None:
+    def missing(**kwargs: object) -> str:
+        raise FileNotFoundError("not cached")
+
+    monkeypatch.setitem(sys.modules, "huggingface_hub", ModuleType("huggingface_hub"))
+    sys.modules["huggingface_hub"].hf_hub_download = missing  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "datasets", ModuleType("datasets"))
+    sys.modules["datasets"].load_dataset = lambda *args, **kwargs: None  # type: ignore[attr-defined]
+    config = DatasetConfig(
+        name="allenai/wildjailbreak",
+        revision="5ddc12a7894f842b0619b8e1c7ee496b198af009",
+        config_name="train",
+        split="train",
+        source="cached",
+    )
+    with pytest.raises(RuntimeError, match="not in the Hugging Face cache"):
+        load_wildjailbreak(config)
+
+
 def test_wildjailbreak_vanilla_rows_use_the_vanilla_prompt() -> None:
     examples = fixture_examples()
     vanilla = next(example for example in examples if example.source_id == "vh-1")
