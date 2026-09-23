@@ -222,9 +222,7 @@ async def test_cost_budget_keeps_missing_cost_reservation() -> None:
 
 @pytest.mark.asyncio
 async def test_cost_budget_trips_when_reported_cost_exceeds_reservation() -> None:
-    adapter = _CountingAdapter(
-        [adapters.AdapterResult(False, usage=Usage(provider_fields={"cost": 0.011}))]
-    )
+    adapter = _CountingAdapter([adapters.AdapterResult(False, usage=Usage(provider_fields={"cost": 0.011}))])
     budget = CostBudget.from_float(0.03)
 
     breach, _ = await budget.call(adapter, CONVERSATION, TASK, 0.01, 1)
@@ -240,9 +238,7 @@ async def test_cost_budget_trips_when_reported_cost_exceeds_reservation() -> Non
 
 @pytest.mark.asyncio
 async def test_cost_budget_releases_only_unused_valid_reservation() -> None:
-    adapter = _CountingAdapter(
-        [adapters.AdapterResult(False, usage=Usage(provider_fields={"cost": 0}))]
-    )
+    adapter = _CountingAdapter([adapters.AdapterResult(False, usage=Usage(provider_fields={"cost": 0}))])
     budget = CostBudget.from_float(0.01)
 
     result, _ = await budget.call(adapter, CONVERSATION, TASK, 0.01, 1)
@@ -314,9 +310,7 @@ async def test_budget_gate_wait_is_excluded_from_request_latency() -> None:
             self.first_started = asyncio.Event()
             self.release_first = asyncio.Event()
 
-        async def classify(
-            self, conversation: tuple[Message, ...], task: TaskDefinition
-        ) -> adapters.AdapterResult:
+        async def classify(self, conversation: tuple[Message, ...], task: TaskDefinition) -> adapters.AdapterResult:
             self.calls += 1
             if self.calls == 1:
                 self.first_started.set()

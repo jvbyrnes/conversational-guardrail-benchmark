@@ -7,10 +7,11 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from guardrail_bench import SCHEMA_VERSION
+from guardrail_bench.comparison import CodeProvenance, EvaluationIdentity, SystemIdentity
 
 
 class StrictModel(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
 
 
 class Role(StrEnum):
@@ -35,6 +36,8 @@ class TaskDefinition(StrictModel):
     version: str
     question: str
     label_mapping: dict[str, bool | None]
+    decision_threshold: float = Field(default=0.5, ge=0, le=1)
+    parser_version: str = "1.0.0"
 
     def ground_truth(self, label: str) -> bool | None:
         if label not in self.label_mapping:
@@ -76,6 +79,14 @@ class Prediction(StrictModel):
     score: float | None = Field(default=None, ge=0, le=1)
     latency_ms: float = Field(ge=0)
     usage: Usage = Field(default_factory=Usage)
+    system_id: str | None = None
+    evaluation_id: str | None = None
+    evaluated_system_id: str | None = None
+    cost_usd: float | None = Field(default=None, ge=0)
+    cost_status: Literal["reported", "estimated", "unavailable"] = "unavailable"
+    currency: str | None = None
+    cost_method: str | None = None
+    billing_policy: str | None = None
     estimated_cost_usd: float = Field(default=0, ge=0)
     error: PredictionError | None = None
 
@@ -83,6 +94,16 @@ class Prediction(StrictModel):
     def decision_xor_error(self) -> Prediction:
         if (self.decision is None) == (self.error is None):
             raise ValueError("exactly one of decision or error is required")
+        known_cost = self.cost_status != "unavailable"
+        if known_cost != (self.cost_usd is not None):
+            raise ValueError("known cost status requires a cost and unavailable cost requires null")
+        provenance = (self.currency, self.cost_method, self.billing_policy)
+        complete_provenance = all(value is not None for value in provenance)
+        absent_provenance = all(value is None for value in provenance)
+        if known_cost and not complete_provenance:
+            raise ValueError("known cost requires complete provenance")
+        if not known_cost and not (complete_provenance or absent_provenance):
+            raise ValueError("unavailable cost provenance must be complete or absent")
         return self
 
 
@@ -104,6 +125,11 @@ class RunManifest(StrictModel):
     schema_version: str = SCHEMA_VERSION
     run_id: str
     code_revision: str
+    code_provenance: CodeProvenance | None = None
+    evaluation: EvaluationIdentity | None = None
+    systems: dict[str, SystemIdentity] = Field(default_factory=dict)
+    private_cohort_digest: str | None = None
+    execution_provenance: dict[str, Any] = Field(default_factory=dict)
     dataset: DatasetMetadata
     task_id: str
     classifier_version: str
@@ -153,28 +179,42 @@ class RunCheckpoint(StrictModel):
 
 
 class ConfusionMatrix(StrictModel):
-    true_positive: int
-    true_negative: int
-    false_positive: int
-    false_negative: int
+    true_positive: int = Field(ge=0)
+    true_negative: int = Field(ge=0)
+    false_positive: int = Field(ge=0)
+    false_negative: int = Field(ge=0)
 
 
 class SystemMetrics(StrictModel):
     adapter_id: str
     model_id: str
-    attempted: int
-    successful: int
-    errors: int
-    coverage: float
-    precision: float
-    recall: float
-    f1: float
-    accuracy: float
+    attempted: int = Field(ge=0)
+    successful: int = Field(ge=0)
+    errors: int = Field(ge=0)
+    coverage: float = Field(ge=0, le=1)
+    precision: float = Field(ge=0, le=1)
+    recall: float = Field(ge=0, le=1)
+    f1: float = Field(ge=0, le=1)
+    accuracy: float = Field(ge=0, le=1)
     confusion: ConfusionMatrix
-    latency_p50_ms: float | None
-    latency_p95_ms: float | None
-    total_cost_usd: float
-    cost_per_1000_examples_usd: float
+    latency_p50_ms: float | None = Field(ge=0)
+    latency_p95_ms: float | None = Field(ge=0)
+    system_id: str | None = None
+    evaluated_system_id: str | None = None
+    cost_known_count: int = Field(default=0, ge=0)
+    cost_coverage: float = Field(default=0, ge=0, le=1)
+    input_tokens: int = Field(default=0, ge=0)
+    output_tokens: int = Field(default=0, ge=0)
+    total_cost_usd: float | None = Field(ge=0)
+    cost_per_1000_examples_usd: float | None = Field(ge=0)
+
+    @model_validator(mode="after")
+    def internally_consistent_counts(self) -> SystemMetrics:
+        if self.successful + self.errors != self.attempted:
+            raise ValueError("successful plus errors must equal attempted")
+        if self.cost_known_count > self.attempted:
+            raise ValueError("known cost count cannot exceed attempted")
+        return self
 
 
 class AggregateResult(StrictModel):

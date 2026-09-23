@@ -126,9 +126,7 @@ class CostBudget:
         if sanitize_reported_cost:
             usage = usage.model_copy(
                 update={
-                    "provider_fields": {
-                        key: value for key, value in usage.provider_fields.items() if key != "cost"
-                    }
+                    "provider_fields": {key: value for key, value in usage.provider_fields.items() if key != "cost"}
                 }
             )
         return AdapterResult(

@@ -7,7 +7,18 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
 
+from guardrail_bench.comparison import PrivateCohort
 from guardrail_bench.models import AggregateResult, Prediction, RunCheckpoint, RunManifest
+
+
+def write_private_cohort(directory: Path, cohort: PrivateCohort) -> None:
+    """Durably persist the independently selected cohort before inference starts."""
+    temporary = directory / "cohort.json.tmp"
+    with temporary.open("w") as handle:
+        handle.write(cohort.model_dump_json(indent=2) + "\n")
+        handle.flush()
+        os.fsync(handle.fileno())
+    temporary.replace(directory / "cohort.json")
 
 
 def _write_checkpoint(directory: Path, checkpoint: RunCheckpoint) -> None:
@@ -55,9 +66,7 @@ def append_checkpoint(directory: Path, predictions: list[Prediction], expected_p
     )
 
 
-def finish_checkpoint(
-    directory: Path, *, status: Literal["complete", "incomplete"], reason: str | None
-) -> None:
+def finish_checkpoint(directory: Path, *, status: Literal["complete", "incomplete"], reason: str | None) -> None:
     checkpoint = RunCheckpoint.model_validate_json((directory / "run-status.json").read_text())
     _write_checkpoint(
         directory,
