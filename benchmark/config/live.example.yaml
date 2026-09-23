@@ -6,6 +6,9 @@ dataset:
   revision: "5ddc12a7894f842b0619b8e1c7ee496b198af009"
   config_name: train
   split: train
+  # Optional: use the exact pinned train/train.tsv already in the local HF cache.
+  # Fails before model calls if the file is absent. Default is "stream".
+  # source: cached
 task: harmful_jailbreak
 sample:
   rate: 0.05

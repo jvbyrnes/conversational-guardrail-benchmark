@@ -18,6 +18,7 @@ class DatasetConfig(ConfigModel):
     split: str = "train"
     config_name: str | None = None
     fixture_path: Path | None = None
+    source: Literal["stream", "cached"] = "stream"
     current_revision: str | None = None
 
     @model_validator(mode="after")
@@ -26,6 +27,13 @@ class DatasetConfig(ConfigModel):
             len(self.revision) != 40 or not all(c in "0123456789abcdef" for c in self.revision.lower())
         ):
             raise ValueError("live dataset revision must be a full 40-character commit SHA")
+        if self.source == "cached" and (
+            self.fixture_path is not None
+            or self.name != "allenai/wildjailbreak"
+            or self.config_name != "train"
+            or self.split != "train"
+        ):
+            raise ValueError("cached source supports only the WildJailbreak train configuration and split")
         return self
 
 

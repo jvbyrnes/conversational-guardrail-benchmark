@@ -159,6 +159,13 @@ publication run. A live run also requires both `execution.cost_cap_usd` and a
 undersized controls before loading data or making model calls. The cap may be
 overridden explicitly with `--cost-cap-usd`.
 
+To read a previously downloaded copy of the pinned WildJailbreak training TSV, set
+`dataset.source: cached` in a copy of the live YAML. This mode uses only the matching
+revision in the Hugging Face Hub cache and fails before model calls if the file is
+absent. It still scans the entire TSV locally to form the deterministic sample. The
+default `dataset.source: stream` retains the remote loader. The cached mode currently
+supports only the WildJailbreak `train` configuration and split.
+
 Every initial paid call and retry atomically reserves its full configured allowance
 before the request starts. When a provider returns a finite, non-negative billed cost
 that does not exceed the reservation, that reservation is reconciled to actual spend,
