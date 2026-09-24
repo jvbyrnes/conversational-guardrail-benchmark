@@ -184,6 +184,15 @@ prediction also records its reconciled provider charge separately from its nulla
 total cost: a retry can have a known charge while an earlier attempt has unknown
 billing. Validation sums these reconciled charges against the manifest actual spend.
 
+The four configs in `benchmark/config/development/` run the pinned 1% cohort for
+each WildJailbreak task and adapter. They use the local cached TSV, the same seed,
+one paid attempt per case, and no retries. The harmful task selects 1,614 cases;
+the technique task selects 2,614. Jev does not report billed USD, so its full
+`$0.05` per-call reservations remain held: the Jev caps are `$80.70` and `$130.70`.
+OpenRouter reports billed cost, allowing unused reservations to be released; its
+configs have a `$4.00` cap each. These caps are admission limits, not forecasts or
+provider-side spending limits. Review them before running with your own keys.
+
 This process-local cap controls which calls the runner admits; it cannot undo a single
 provider charge that violates the configured reservation. Use a dedicated provider key
 with a matching provider-side spending limit as the external hard stop. The checked-in
