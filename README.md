@@ -193,9 +193,10 @@ The Jev reservation is about 25 times the largest input-only estimate in the
 completed 484-case run; TypeSafe's published input price is `$0.042` per million
 tokens, but account-specific charges may differ. OpenRouter reports billed cost,
 allowing unused reservations to be released. Its `$0.005` per-call reservation is
-about 14 times the largest reported charge in the completed 484-case run; its
-configs retain a `$4.00` cap each. These caps are admission limits, not forecasts or
-provider-side spending limits. Review them before running with your own keys.
+about 14 times the largest reported charge in the completed 484-case run. The
+OpenRouter caps of `$8.07` and `$13.07` cover every reservation even if calls do not
+report billed cost. These caps are admission limits, not forecasts or provider-side
+spending limits. Review them before running with your own keys.
 
 This process-local cap controls which calls the runner admits; it cannot undo a single
 provider charge that violates the configured reservation. Use a dedicated provider key

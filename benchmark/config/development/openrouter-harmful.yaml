@@ -18,5 +18,5 @@ execution:
   concurrency: 1
   retries: 0
   timeout_seconds: 30
-  # Billed cost normally releases unused reservation after each call.
-  cost_cap_usd: 4.00
+  # Covers all 1,614 reservations even if no billed cost is reported.
+  cost_cap_usd: 8.07
