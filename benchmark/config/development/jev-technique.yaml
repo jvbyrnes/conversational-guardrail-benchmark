@@ -13,10 +13,10 @@ adapters:
   - id: jev
     kind: jev
     model: jev-latest
-    cost_reservation_usd: 0.05
+    cost_reservation_usd: 0.001
 execution:
   concurrency: 1
   retries: 0
   timeout_seconds: 30
   # Jev does not report billed USD; all 2,614 reservations remain held.
-  cost_cap_usd: 130.70
+  cost_cap_usd: 2.614
