@@ -1,0 +1,22 @@
+# 1% development cohort: 2,614 selected cases at the pinned revision.
+dataset:
+  name: allenai/wildjailbreak
+  revision: "5ddc12a7894f842b0619b8e1c7ee496b198af009"
+  config_name: train
+  split: train
+  source: cached
+task: adversarial_technique
+sample:
+  rate: 0.01
+  seed: 20260918
+adapters:
+  - id: jev
+    kind: jev
+    model: jev-latest
+    cost_reservation_usd: 0.001
+execution:
+  concurrency: 1
+  retries: 0
+  timeout_seconds: 30
+  # Jev does not report billed USD; all 2,614 reservations remain held.
+  cost_cap_usd: 2.614
