@@ -350,6 +350,13 @@ The static site SHALL allow a user to select two or more systems for one compari
 - **THEN** the value appears as unavailable
 - **AND** is not treated as zero
 
+#### Scenario: Some per-case costs are known
+
+- **GIVEN** a valid result has known per-case costs but incomplete cost coverage
+- **WHEN** the page renders its cost summary
+- **THEN** it shows the sum of known costs as a lower bound with the known and total case counts
+- **AND** keeps total-cost rankings and deltas unavailable
+
 ### Requirement: Source-aligned case comparison
 
 The static site SHALL align per-example predictions by stable public case ID and support inspection of disagreements, errors, correctness, and source-label strata without publishing internal source IDs or conversation text.

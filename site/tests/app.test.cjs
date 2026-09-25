@@ -33,6 +33,8 @@ test('case alignment supports three systems, errors, missing cost/score and all 
  for(const filter of ['all','disagreement','error','correct','incorrect']) assert.equal(api.filterCases(rows,'harmful',filter,'score').length,1);
  assert.equal(api.filterCases(rows,'benign','all','cost_usd').length,0);
  assert.equal(api.format(null,'money'),'Unavailable');assert.equal(api.format(0,'money'),'$0.0000');
+ assert.equal(api.format(0.000021,'money'),'$0.000021');
+ assert.deepEqual(api.knownCost([{evaluated_system_id:'a',cost_usd:0.2},{evaluated_system_id:'a',cost_usd:null},{evaluated_system_id:'b',cost_usd:0.5}],'a'),{usd:0.2,count:1,total:2});
  predictions.get('a').push(predictions.get('a')[0]);assert.throws(()=>api.caseRows(entries,predictions),/Duplicate/);
 });
 test('artifact URLs stay inside public bundles',()=>{
@@ -80,6 +82,15 @@ test('actual summary and case DOM renders three systems and inert hostile labels
  const p=await page({schema_version:'1.0.0',runs:entries.map(e=>e.run)},'',artifacts);
  assert.doesNotMatch(text(p.nodes.status),/unavailable/i);assert.match(text(p.nodes.systems),/F1/);assert.match(text(p.nodes.systems),/<img onerror=attack\(\)>/);assert.match(text(p.nodes.systems),/Unavailable/);assert.match(text(p.nodes.cases),/ERROR: timeout/);assert.match(text(p.nodes.metadata),/pinned/);assert.match(text(p.nodes.compatibility),/pricing_version/);assert.equal(new URLSearchParams(p.history.url).getAll('result').length,3);
  p.nodes.reference.value=api.token(entries[0]);p.nodes.reference.onchange();for(let i=0;i<10;i++)await new Promise(resolve=>setImmediate(resolve));assert.match(text(p.nodes.systems),/Δ/);
+});
+test('partial cost displays the known subtotal without ranking it as a total',async()=>{
+ const e=entry('partial','partial');e.run.systems=[e.system];e.system.rankability.cost={eligible:false,reason:'incomplete_cost_coverage'};
+ e.run.aggregate_uri='runs/partial/aggregate.json';e.run.predictions_uri='runs/partial/predictions.jsonl';
+ const artifacts={'partial/aggregate.json':{systems:[{evaluated_system_id:'partial',attempted:2,total_cost_usd:null,cost_per_1000_examples_usd:null,cost_known_count:1,cost_coverage:.5}]},
+ 'partial/predictions.jsonl':[{public_case_id:'case-1',evaluated_system_id:'partial',ground_truth:true,source_label:'harmful',decision:true,error:null,cost_usd:.2342294},{public_case_id:'case-2',evaluated_system_id:'partial',ground_truth:true,source_label:'harmful',decision:null,error:'timeout',cost_usd:null}].map(JSON.stringify).join('\n')};
+ const p=await page({schema_version:'1.0.0',runs:[e.run]},'',artifacts);
+ assert.match(text(p.nodes.systems),/≥\$0\.2342/);assert.match(text(p.nodes.systems),/Known 1\/2 cases; excludes 1 unknown cost/);
+ assert.doesNotMatch(text(p.nodes.systems),/Rank/);
 });
 test('rankings need an explicit reference and entire selected family compatibility',()=>{
  const entries=[entry('a'),entry('b','b'),entry('c','c')],metrics=[{f1:.8,total_cost_usd:1},{f1:.9,total_cost_usd:3},{f1:.9,total_cost_usd:2}];

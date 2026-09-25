@@ -7,10 +7,12 @@ supporting publication workflow have been reviewed.
 
 ## 1. WildJailbreak sampled results
 
-- [ ] Run the pinned, deterministic 1% cohort for both WildJailbreak tasks with
-  Jev and the selected LLM baseline.
-- [ ] Validate the four run artifacts; review coverage, errors, label mappings,
-  disagreements, cost, and latency before drawing conclusions.
+- [x] Run the pinned 1% harmful-jailbreak cohort with Jev and Luna on the same
+  1,614 cases; validate both run artifacts.
+- [ ] Review the harmful-jailbreak label mappings, disagreements, three Luna
+  timeouts, cost coverage, and latency limitations before drawing conclusions.
+- [ ] Run and validate the pinned 1% adversarial-technique cohort with Jev and
+  Luna, then review its coverage, errors, disagreements, cost, and latency.
 - [ ] Present valid results with their sample rate, counts, seed, and exploratory
   status. Record limitations and any changes needed before the next dataset.
 

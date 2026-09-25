@@ -68,6 +68,11 @@ function caseRows(entries, predictions) {
   });
   return [...cases.values()].map(item => ({...item, disagreement: new Set([...item.rows.values()].filter(r => !r.error && r.decision != null).map(r => r.decision)).size > 1}));
 }
+function knownCost(rows, evaluatedSystemId) {
+  const own = (rows || []).filter(row => row.evaluated_system_id === evaluatedSystemId);
+  const known = own.filter(row => row.cost_usd != null && Number.isFinite(row.cost_usd));
+  return {usd: known.reduce((sum, row) => sum + row.cost_usd, 0), count: known.length, total: own.length};
+}
 function filterCases(rows, label, filter, sort) {
   const peak = item => Math.max(-Infinity, ...[...item.rows.values()].map(r => Number.isFinite(r[sort]) ? r[sort] : -Infinity));
   return rows.filter(item => (!label || item.source_label === label) && (filter === 'all' ||
@@ -83,12 +88,12 @@ function metricRank(entries, metrics, index, referenceIndex, family, key) {
   const value = metrics[index][key];
   return 1 + metrics.filter(m => lowerIsBetter ? m[key] < value : m[key] > value).length;
 }
-const format = (value, kind = 'number') => value == null || !Number.isFinite(value) ? 'Unavailable' : kind === 'percent' ? `${(value*100).toFixed(1)}%` : kind === 'money' ? `$${value.toFixed(4)}` : String(Number(value.toFixed(2)));
+const format = (value, kind = 'number') => value == null || !Number.isFinite(value) ? 'Unavailable' : kind === 'percent' ? `${(value*100).toFixed(1)}%` : kind === 'money' ? `$${value.toFixed(value !== 0 && Math.abs(value) < 0.001 ? 6 : 4)}` : String(Number(value.toFixed(2)));
 function artifactUrl(base, path) {
   if (typeof path !== 'string' || !/^runs\/[A-Za-z0-9_.-]+\/(manifest\.json|aggregate\.json|predictions\.jsonl|cohort\.json|validation-report\.json)$/.test(path) || path.includes('..')) throw new Error('Unsafe artifact location');
   return new URL(path, base).href;
 }
-const api = {defaults, flatten, token, compatibility, differingFields, exactSelection, selectionQuery, caseRows, filterCases, metricRank, format, artifactUrl};
+const api = {defaults, flatten, token, compatibility, differingFields, exactSelection, selectionQuery, caseRows, knownCost, filterCases, metricRank, format, artifactUrl};
 if (typeof module !== 'undefined') module.exports = api;
 if (typeof document !== 'undefined') boot().catch(error => { document.querySelector('#status').textContent = `Results unavailable: ${error.message}`; });
 async function boot() {
@@ -149,9 +154,28 @@ async function boot() {
     if (!chosen.length) {$('#systems').textContent='Select results to compare.'; $('#explorer').hidden=true; return;}
     const table=el('table'), head=el('tr'); head.append(el('th','Metric')); chosen.forEach((e,i)=>{const th=el('th',name(e)); const identity=e.system.identity || e.system; th.append(el('p', `${identity.requested_model_id || 'See provenance'} · snapshot: ${identity.snapshot_status || 'unavailable'} · ${e.run.completed_at || loaded[i].manifest?.completed_at || 'date unavailable'}`)); head.append(th);}); table.append(head);
     const metrics=chosen.map((e,i)=>(loaded[i].systems || []).find(s=>s.evaluated_system_id === e.system.evaluated_system_id) || {});
+    const knownCosts=chosen.map(e=>knownCost(predictions.get(e.run.run_id),e.system.evaluated_system_id));
     const refIndex=chosen.findIndex(e=>token(e)===reference);
     const rows=[['F1','f1','quality','percent'],['Precision','precision','quality','percent'],['Recall','recall','quality','percent'],['Accuracy','accuracy','quality','percent'],['Coverage','coverage','quality','percent'],['Errors','errors','quality'],['Latency p50 (ms)','latency_p50_ms','latency'],['Latency p95 (ms)','latency_p95_ms','latency'],['Total cost (USD)','total_cost_usd','cost','money'],['Cost / 1,000 examples (USD)','cost_per_1000_examples_usd','cost','money'],['Known cost coverage','cost_coverage','cost','percent'],['Known cost records','cost_known_count','cost']];
-    for (const [label,key,family,kind] of rows) {const tr=el('tr');tr.append(el('th',label));metrics.forEach((m,i)=>{const td=el('td',format(m[key],kind)); const rank=['cost_coverage','cost_known_count'].includes(key) ? null : metricRank(chosen,metrics,i,refIndex,family,key); if(rank != null) td.append(el('small',`Rank ${rank} of ${chosen.length}`)); if(refIndex>=0 && i!==refIndex && compatibility(chosen[i],chosen[refIndex],family).eligible && Number.isFinite(m[key]) && Number.isFinite(metrics[refIndex][key])) td.append(el('small',`Δ ${format(m[key]-metrics[refIndex][key],kind)} vs reference`));tr.append(td);});table.append(tr);}
+    for (const [label,key,family,kind] of rows) {
+      const tr=el('tr'); tr.append(el('th',label));
+      metrics.forEach((m,i)=>{
+        const observed=knownCosts[i];
+        const costRow=key==='total_cost_usd' || key==='cost_per_1000_examples_usd';
+        const showKnown=costRow && m[key] == null && observed.count > 0 && m.attempted > 0;
+        const knownValue=key==='cost_per_1000_examples_usd' ? observed.usd * 1000 / m.attempted : observed.usd;
+        const td=el('td',showKnown ? `≥${format(knownValue,'money')}` : format(m[key],kind));
+        if (showKnown) {
+          const missing=observed.total-observed.count;
+          td.append(el('small',`Known ${observed.count}/${observed.total} cases; excludes ${missing} unknown cost${missing===1?'':'s'}`));
+        }
+        const rank=['cost_coverage','cost_known_count'].includes(key) ? null : metricRank(chosen,metrics,i,refIndex,family,key);
+        if(rank != null) td.append(el('small',`Rank ${rank} of ${chosen.length}`));
+        if(refIndex>=0 && i!==refIndex && compatibility(chosen[i],chosen[refIndex],family).eligible && Number.isFinite(m[key]) && Number.isFinite(metrics[refIndex][key])) td.append(el('small',`Δ ${format(m[key]-metrics[refIndex][key],kind)} vs reference`));
+        tr.append(td);
+      });
+      table.append(tr);
+    }
     const confusion=el('tr');confusion.append(el('th','Confusion TP / TN / FP / FN'));metrics.forEach(m=>confusion.append(el('td',m.confusion ? ['true_positive','true_negative','false_positive','false_negative'].map(k=>format(m.confusion[k])).join(' / ') : 'Unavailable')));table.append(confusion);$('#systems').append(table);
     if(refIndex<0) {$('#compatibility').append(el('p','Select a reference to show compatible metric deltas.')); const inspectionReference=chosen[0]; chosen.forEach(e=>families.forEach(f=>{const c=compatibility(e,inspectionReference,f);if(!c.eligible)$('#compatibility').append(el('p',`${name(e)} — ${f}: ${c.reason}`,'warning'));}));}
     else chosen.forEach(e=>families.forEach(f=>{const c=compatibility(e,chosen[refIndex],f);$('#compatibility').append(el('p',`${name(e)} — ${f}: ${c.reason}`,c.eligible?'':'warning'));}));

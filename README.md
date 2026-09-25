@@ -108,9 +108,12 @@ Shared URLs pin exact run IDs. Duplicate results default to the latest completed
 publication run, with a lexicographic run-ID tie break; alternatives remain selectable.
 Quality, cost, and latency have independent eligibility and compatibility checks.
 Different cohorts or task definitions disable all three comparisons; pricing or
-execution differences disable only the relevant family. Missing cost is unavailable,
-never zero. Case filters expose disagreements, correctness, errors and source strata
-without exposing upstream conversation text. Provenance panels explain each result.
+execution differences disable only the relevant family. When some calls lack cost,
+the site shows the sum of known per-case costs as a lower bound with its coverage;
+the complete total remains unavailable for rankings and deltas. Missing cost is
+never treated as zero. Case filters expose disagreements, correctness, errors and
+source strata without exposing upstream conversation text. Provenance panels
+explain each result.
 
 ## Legacy migration and schema policy
 
