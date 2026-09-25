@@ -1,0 +1,28 @@
+# External Jev evaluations relevant to conversational guardrail benchmarking.
+# Research notes only; these are not benchmark inputs or results from this project.
+last_checked: "2026-09-25"
+sources:
+  - title: "Jev injection benchmark"
+    author: "ASEVlad"
+    published: "2026-09-20"
+    report: "https://asevlad.github.io/jev-injection-bench/"
+    repository: "https://github.com/ASEVlad/jev-injection-bench"
+    scope: "Prompt-injection detection on 11,900 labelled prompts from four public datasets, including 872 jailbreak prompts."
+    relevance: "Related to the two WildJailbreak tasks, but uses different datasets and classifier wording."
+    notes: "Compares Jev with Claude Haiku 4.5, PromptGuard-2, and PIGuard; reports ranking, catch rate, false alarms, calibration, latency, and cost. Static corpus, with no adaptive attack testing."
+
+  - title: "Jev benchmark for agent tool-call risk"
+    author: "themsquared"
+    published: "2026-09-24"
+    repository: "https://github.com/themsquared/jev-benchmark"
+    scope: "Classification of 60 hand-labelled agent tool calls as readonly, destructive, privileged, or exfiltration."
+    relevance: "Related guardrail use case; does not test any of this project's four tasks."
+    notes: "Compares Jev with Claude Sonnet 5 on accuracy, latency, cost, and confidence. Small, author-labelled sample with ambiguous cases."
+
+  - title: "TypeSafe Jev vs Gemini on 1,759 decisions"
+    author: "Entagl Research"
+    published: "2026-09-23"
+    report: "https://www.entagl.com/blog/typesafe-jev-benchmark-ai-decision-models"
+    scope: "1,357 scored decisions from 283 hand-labelled cases across 13 tasks, plus 402 replayed customer-chat routing decisions."
+    relevance: "Includes a prompt-injection task, but does not report a separate result for it or test this project's datasets."
+    notes: "Compares Jev with a Gemini model. Aggregate results mix guardrail and non-guardrail tasks; live replay disagreements were reviewed by one person."
