@@ -20,6 +20,9 @@ context: |
   - Prefer precision, recall, F1, and confusion matrices over accuracy alone.
   - Never publish sampled results without their sample rate, count, strata, and seed.
   - Never automatically trigger paid model evaluations after detecting an upstream revision.
+  - Treat reviewed sampled runs as the current deliverable for each dataset.
+  - Defer full paid runs for WildJailbreak, SonderMind, and FinSafeGuard to the
+    final roadmap phase, after all three sampled benchmarks are reviewed.
 
 rules:
   specs:

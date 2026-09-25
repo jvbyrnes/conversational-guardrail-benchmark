@@ -295,12 +295,18 @@ Do not put secrets in YAML. `.env` is ignored, but the runner does not load it i
 
 ## Planned changes
 
+Reviewed sampled runs are the current milestone. The full WildJailbreak,
+SonderMind, and FinSafeGuard runs are deferred to the final phase in
+[`openspec/roadmap.md`](openspec/roadmap.md), after all three sampled benchmarks
+have been assessed and their costs approved.
+
 1. `wildjailbreak-vertical-slice`
 2. WildJailbreak adversarial-technique refinements
 3. SonderMind abuse-disclosure benchmark
 4. FinSafeGuard financial-advice benchmark
 5. Dataset revision monitoring and stale-result notifications
 6. Public deployment and custom-domain hardening
+7. Full runs for all three benchmark sets, with separate cost approval
 
 ## OpenSpec workflow
 

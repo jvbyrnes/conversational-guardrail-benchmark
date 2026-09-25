@@ -60,4 +60,4 @@
 - [x] 6.4 Document validation, migration, publication, and local comparison commands
 - [x] 6.5 Validate this OpenSpec change
 - [ ] 6.6 Run two minimal real-adapter smoke tests under explicit cost caps only after all publication gates pass
-- [ ] 6.7 Run the deterministic 1% development benchmark and review errors before seeking approval for a full run
+- [ ] 6.7 Run the deterministic 1% WildJailbreak benchmark, validate and review its errors, and present it as exploratory evidence; defer full runs to the final phase in `openspec/roadmap.md`
