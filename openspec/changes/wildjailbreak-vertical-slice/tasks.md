@@ -67,6 +67,6 @@
   - [x] Reconcile trustworthy provider-reported costs to release unused reservations while preserving fail-closed accounting
   - [ ] Execute the paid live smoke test (not performed by the offline implementation)
 - [ ] 8.3 Run a deterministic 1% development benchmark for both WildJailbreak tasks
-- [ ] 8.4 Review errors and label-mapping samples before any full run
-- [ ] 8.5 Run the full publication benchmark only after explicit human approval
+- [ ] 8.4 Review errors, label-mapping samples, and disagreements in the 1% runs
+- [ ] 8.5 Record the 1% results and limitations as the current WildJailbreak outcome; defer full runs to the final phase in `openspec/roadmap.md`
 - [x] 8.6 Validate the OpenSpec change and record exact reproduction commands
