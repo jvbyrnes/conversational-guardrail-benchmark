@@ -64,8 +64,8 @@
 
 ## 7. Public Review Deployment
 
-- [ ] 7.1 Generate a fresh static export and fail unless the public index and every referenced public bundle pass canonical-form, checksum, metadata, and publication-safety validation
-- [ ] 7.2 Add a GitHub Pages Actions workflow that deploys only the generated static export and never the repository root, raw run evidence, or `results/preview/`
+- [x] 7.1 Generate a fresh static export and fail unless the public index and every referenced public bundle pass canonical-form, checksum, metadata, and publication-safety validation
+- [x] 7.2 Add a GitHub Pages Actions workflow that deploys only the generated static export and never the repository root, raw run evidence, or `results/preview/`
 - [ ] 7.3 Publish the current site to the repository's `github.io` project URL, preserving the explicit no-published-results state when the public index is empty
 - [ ] 7.4 Verify the live HTTPS page, JavaScript, CSS, and public index, and confirm preview, private, credential, cached-dataset, and internal-source paths are not served
 - [ ] 7.5 Optionally connect an operator-approved Hostinger-managed subdomain after the exact hostname and existing DNS records are reviewed and the domain is verified with GitHub
