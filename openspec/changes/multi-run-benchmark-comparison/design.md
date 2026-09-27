@@ -213,6 +213,34 @@ For every selected result, show run ID, system/evaluation identity, provider, mo
 
 The UI may display non-comparable runs for inspection, but it suppresses winner language, rankings, and deltas only for the affected metric families. It lists the exact key fields that differ.
 
+## Public Review Deployment
+
+The first public deployment uses GitHub Pages as a review environment for the
+framework-free site. A GitHub Actions workflow builds a fresh export with the
+existing static-export command and uploads that export as the Pages artifact.
+The workflow must never deploy the repository root directly.
+
+The exported artifact contains only `site/` and the validated
+`results/published/` projection selected by the exporter. It excludes
+`results/preview/`, raw run evidence, cached datasets, credentials, internal
+source identifiers, and all other repository files. Export validation remains
+the deployment gate: every referenced bundle must pass validation, checksums
+and index metadata must match, and unsafe or missing artifacts fail the build
+before upload.
+
+The initial review URL uses the repository's `github.io` project URL. The
+checked-in public index is allowed to be empty; in that state the deployed site
+must show the explicit no-published-results view rather than substituting
+fixture, preview, or unvalidated data. The deployment is verified over HTTPS by
+loading the page, its JavaScript and CSS, and the public index, and by confirming
+that preview and private paths are not served.
+
+After the review URL is working, an optional dedicated subdomain managed in
+Hostinger DNS may be attached through GitHub Pages. Domain verification and DNS
+changes are separate operator-approved steps because the exact hostname and
+existing DNS use are external to this repository. Production hosting beyond
+this static review deployment remains out of scope.
+
 ## Migration
 
 Version-1 artifacts are parsed without allowing model defaults to masquerade as serialized evidence. A migration command derives canonical identities only when all required values are present. When snapshot information is absent, it records `snapshot_status: unavailable`; it never guesses a snapshot.
@@ -230,6 +258,7 @@ Migration reconstructs a legacy cohort only by replaying the recorded selection 
 - Migration tests using the existing fixture artifacts.
 - Static-site tests with two compatible systems, three or more systems, per-metric incompatible runs, incomplete runs, errors, duplicate runs, and missing optional scores or cost.
 - Offline end-to-end test: fixture execution -> validation -> publication index -> comparison rendering.
+- Deployment verification that publishes only a freshly validated static export, serves the current public index over HTTPS, and confirms preview/private paths are absent.
 
 ## Remaining Open Decisions
 

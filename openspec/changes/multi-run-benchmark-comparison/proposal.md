@@ -16,6 +16,7 @@ The current artifacts preserve substantial run provenance, but the site reads on
 - Keep raw per-run predictions immutable and derive comparison data from them.
 - Publish only strict allowlisted projections with pseudonymous case IDs, sanitized errors, and provenance-aware nullable cost.
 - Extend the static site with benchmark/task selection, multi-run selection, a summary comparison table, and case-level disagreement inspection.
+- Publish the current validated static export to a GitHub Pages review URL so stakeholders can inspect the site and request changes before further interface refinement.
 - Display exact model, dataset, classifier, sample, clean-code, pricing, and run provenance in the comparison flow.
 - Preserve explicit incomplete, exploratory, stale, invalid, and metric-specific non-comparable states; incomplete and invalid runs are preview-only.
 - Cover the full flow with fixture-based, network-free tests.
@@ -28,7 +29,7 @@ The current artifacts preserve substantial run provenance, but the site reads on
 - Statistical significance claims or repeated-trial analysis.
 - Comparing unlike tasks through a synthetic global leaderboard.
 - Publishing upstream conversation text.
-- Hosting and deployment configuration.
+- Production hosting architecture, server-side infrastructure, and multi-environment deployment beyond the GitHub Pages review deployment.
 
 ## Success Criteria
 
@@ -39,6 +40,7 @@ The current artifacts preserve substantial run provenance, but the site reads on
 - A user can select at least two systems for one task and compare quality, coverage, confusion counts, latency, and cost, with rankings and deltas enabled independently for each compatible metric family.
 - A user can inspect public-case-ID-aligned predictions and filter to disagreements or errors without exposing internal source IDs or source conversation text.
 - The public site warns when runs are exploratory, stale, or not comparable for a metric family; the preview site additionally shows incomplete and invalid states while suppressing misleading rankings or deltas.
+- A publicly reachable HTTPS review deployment contains only the validated static export, excludes preview and private evidence, and faithfully renders the current empty-index state when no public runs are indexed.
 - Existing version-1 run artifacts migrate deterministically without treating an unexplained zero cost as known, or produce an actionable compatibility error.
 - Regenerating indexes from identical bundles produces byte-identical output, and duplicate runs use a visible deterministic default while remaining explicitly selectable.
 
@@ -55,4 +57,4 @@ The current artifacts preserve substantial run provenance, but the site reads on
 
 ## Recommended Delivery Slice
 
-First validate and index the existing fixture run plus one second fixture model, then build the comparison page against those real artifacts. Run paid smoke tests only after the validation and publication gates are passing.
+First validate and index the existing fixture run plus one second fixture model, then build the comparison page against those real artifacts. Publish the validated static export to a GitHub Pages review URL and collect interface feedback. Run paid smoke tests only after the validation and publication gates are passing.

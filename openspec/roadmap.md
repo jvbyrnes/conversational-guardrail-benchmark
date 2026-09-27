@@ -5,7 +5,16 @@ FinSafeGuard. A reviewed sample is the current deliverable for each set. Full
 dataset evaluations are deferred until all three sampled benchmarks and their
 supporting publication workflow have been reviewed.
 
-## 1. WildJailbreak sampled results
+## 1. Public site review deployment
+
+- [ ] Generate a fresh validated static export and publish it to the repository's
+  GitHub Pages project URL without deploying preview or private evidence.
+- [ ] Verify the live HTTPS site and its expected empty-results state when the
+  public index contains no publishable runs, then collect interface feedback.
+- [ ] Optionally connect an operator-approved Hostinger-managed subdomain after
+  reviewing the exact hostname, existing DNS records, and GitHub verification.
+
+## 2. WildJailbreak sampled results
 
 - [x] Run the pinned 1% harmful-jailbreak cohort with Jev and Luna on the same
   1,614 cases; validate both run artifacts.
@@ -16,7 +25,7 @@ supporting publication workflow have been reviewed.
 - [ ] Present valid results with their sample rate, counts, seed, and exploratory
   status. Record limitations and any changes needed before the next dataset.
 
-## 2. SonderMind sampled results
+## 3. SonderMind sampled results
 
 - [ ] Define the abuse-disclosure task, source access and license conditions,
   immutable dataset identity, label mapping, and representative fixtures in its
@@ -26,7 +35,7 @@ supporting publication workflow have been reviewed.
 - [ ] Choose the sample rate after inspecting dataset and stratum sizes; aim
   for 1% only if every required class has enough cases for useful review.
 
-## 3. FinSafeGuard sampled results
+## 4. FinSafeGuard sampled results
 
 - [ ] Define the financial-advice task, source access and license conditions,
   immutable dataset identity, label mapping, and representative fixtures in its
@@ -36,7 +45,7 @@ supporting publication workflow have been reviewed.
 - [ ] Choose the sample rate after inspecting dataset and stratum sizes; aim
   for 1% only if every required class has enough cases for useful review.
 
-## 4. Final full runs across all three sets
+## 5. Final full runs across all three sets
 
 - [ ] After the sampled results and publication workflow are reviewed, estimate
   total calls, runtime, and provider spend for all three full datasets.
