@@ -7,7 +7,7 @@ supporting publication workflow have been reviewed.
 
 ## 1. Public site review deployment
 
-- [ ] Generate a fresh validated static export and publish it to the repository's
+- [x] Generate a fresh validated static export and publish it to the repository's
   GitHub Pages project URL without deploying preview or private evidence.
 - [ ] Verify the live HTTPS site and its expected empty-results state when the
   public index contains no publishable runs, then collect interface feedback.
