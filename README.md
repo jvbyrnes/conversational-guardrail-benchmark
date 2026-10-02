@@ -100,8 +100,16 @@ python -m http.server 8000 --directory /tmp/guardrail-public-site
 ```
 
 The exporter excludes `results/preview/`, raw runs, the legacy alias, and all other
-repository files. It refuses an existing output directory or a checksum mismatch.
-It prepares all files before atomically creating the destination.
+repository files. It refuses an existing output directory, a checksum mismatch, or,
+when the public index is empty, a non-canonical `results/published/headline.json`.
+That optional strict summary uses schema `1.1.0` and contains only fixed reviewed
+task/dataset/sample identifiers, enumerated Jev/Luna system and cost-basis values,
+exact allowlisted run IDs, and internally consistent aggregate metrics. Display labels
+and explanatory text are fixed in the browser rather than accepted from publication
+data. The exporter validates and copies the headline only for an empty index; a stale
+headline is ignored and excluded when indexed runs exist. It contains no case-level
+evidence or downloads. The exporter prepares all files before atomically creating the
+destination.
 
 In the viewer, select a task/cohort, then two or more systems and an explicit reference.
 Shared URLs pin exact run IDs. Duplicate results default to the latest completed valid

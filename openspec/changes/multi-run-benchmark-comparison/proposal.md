@@ -13,6 +13,7 @@ The current artifacts preserve substantial run provenance, but the site reads on
 - Persist an authoritative selected-cohort manifest before inference so expected prediction coverage is independently verifiable.
 - Add artifact validation for provenance, expected prediction coverage, uniqueness, aggregate reconstruction, and publication safety.
 - Generate byte-deterministic public and separately stored local preview indexes from validated per-run artifacts.
+- Permit a strict canonical headline-only comparison artifact for reviewed exploratory runs whose full public bundles are not yet publishable, without exposing case-level evidence or implying rankability.
 - Keep raw per-run predictions immutable and derive comparison data from them.
 - Publish only strict allowlisted projections with pseudonymous case IDs, sanitized errors, and provenance-aware nullable cost.
 - Extend the static site with benchmark/task selection, multi-run selection, a summary comparison table, and case-level disagreement inspection.
@@ -40,7 +41,7 @@ The current artifacts preserve substantial run provenance, but the site reads on
 - A user can select at least two systems for one task and compare quality, coverage, confusion counts, latency, and cost, with rankings and deltas enabled independently for each compatible metric family.
 - A user can inspect public-case-ID-aligned predictions and filter to disagreements or errors without exposing internal source IDs or source conversation text.
 - The public site warns when runs are exploratory, stale, or not comparable for a metric family; the preview site additionally shows incomplete and invalid states while suppressing misleading rankings or deltas.
-- A publicly reachable HTTPS review deployment contains only the validated static export, excludes preview and private evidence, and faithfully renders the current empty-index state when no public runs are indexed.
+- A publicly reachable HTTPS review deployment contains only the validated static export, excludes preview and private evidence, and renders either a strict reviewed headline summary or the empty-results state when no public runs are indexed.
 - Existing version-1 run artifacts migrate deterministically without treating an unexplained zero cost as known, or produce an actionable compatibility error.
 - Regenerating indexes from identical bundles produces byte-identical output, and duplicate runs use a visible deterministic default while remaining explicitly selectable.
 

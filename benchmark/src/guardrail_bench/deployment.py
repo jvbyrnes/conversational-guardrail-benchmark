@@ -12,6 +12,7 @@ from pathlib import Path
 def export_site(site_root: Path, publication_root: Path, destination: Path) -> Path:
     """Validate all referenced bytes before atomically creating a new export directory."""
     from guardrail_bench.comparison import fingerprint
+    from guardrail_bench.headline import HeadlineComparison, headline_bytes
     from guardrail_bench.publication import PublicManifest, PublishedIndex, _bytes, validate_bundle
 
     if destination.exists():
@@ -24,6 +25,18 @@ def export_site(site_root: Path, publication_root: Path, destination: Path) -> P
     # Inspect the schema-validated wire representation to avoid coupled DTO accessors.
     wire = json.loads(index.model_dump_json())
     files: dict[Path, bytes] = {Path("results/published/index.json"): index_bytes}
+    headline_path = publication_root / "headline.json"
+    if not wire["runs"] and headline_path.exists():
+        if headline_path.is_symlink():
+            raise ValueError("headline summary must not be a symlink")
+        try:
+            headline_content = headline_path.read_bytes()
+            headline = HeadlineComparison.model_validate_json(headline_content)
+        except (OSError, ValueError) as error:
+            raise ValueError("headline summary failed strict validation") from error
+        if headline_bytes(headline) != headline_content:
+            raise ValueError("headline summary is not in canonical generated form")
+        files[Path("results/published/headline.json")] = headline_content
     for name in ("index.html", "app.js", "styles.css"):
         files[Path("site") / name] = (site_root / name).read_bytes()
     bundle_names = {"manifest.json", "aggregate.json", "cohort.json", "predictions.jsonl", "validation-report.json"}
