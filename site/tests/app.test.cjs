@@ -60,14 +60,21 @@ async function page(index, search='', artifacts={}){
  const nodes=Object.fromEntries(ids.map(id=>[id,new Element(['task','cohort','reference','label','filter','sort'].includes(id)?'select':'div')]));
  nodes.filter.value='all';nodes.sort.value='disagreement';nodes.controls.hidden=true;
  const calls=[], history={replaceState(_a,_b,url){this.url=url;}};
- const context={document:{querySelector:s=>nodes[s.slice(1)],createElement:tag=>new Element(tag)},location:{href:'https://example.test/site/index.html',search},history,URL,URLSearchParams,fetch:async url=>{calls.push(String(url));const value=String(url).endsWith('index.json')?index:artifacts[String(url).split('/').slice(-2).join('/')];return {ok:value!==undefined,status:value===undefined?404:200,json:async()=>value,text:async()=>value};}};
+ const context={document:{querySelector:s=>nodes[s.slice(1)],createElement:tag=>new Element(tag)},location:{href:'https://example.test/site/index.html',search},history,URL,URLSearchParams,fetch:async url=>{calls.push(String(url));const value=String(url).endsWith('index.json')?index:String(url).endsWith('headline.json')?artifacts['headline.json']:artifacts[String(url).split('/').slice(-2).join('/')];return {ok:value!==undefined,status:value===undefined?404:200,json:async()=>value,text:async()=>value};}};
  vm.runInNewContext(fs.readFileSync(require.resolve('../app.js'),'utf8'),context);
  for(let i=0;i<15;i++) await new Promise(resolve=>setImmediate(resolve));
  return {nodes,calls,history};
 }
 const text=node=>[node.textContent,...node.children.map(text)].join(' ');
-test('empty index renders without selecting or fetching artifacts',async()=>{
- const p=await page({schema_version:'1.0.0',runs:[]});assert.match(text(p.nodes.status),/No published results/);assert.equal(p.calls.length,1);assert.equal(p.nodes.controls.hidden,true);assert.equal(p.history.url,undefined);
+test('empty index renders without selecting artifacts when no headline exists',async()=>{
+ const p=await page({schema_version:'1.0.0',runs:[]});assert.match(text(p.nodes.status),/No published results/);assert.equal(p.calls.length,2);assert.match(p.calls[1],/headline\.json/);assert.equal(p.nodes.controls.hidden,true);assert.equal(p.history.url,undefined);
+});
+test('empty index renders a clearly labelled headline-only comparison when provided',async()=>{
+ const headline={schema_version:'1.1.0',status:'exploratory',task_id:'harmful_jailbreak',task_version:'1.0.0',dataset:{name:'allenai/wildjailbreak',revision:'5ddc12a7894f842b0619b8e1c7ee496b198af009'},sample:{rate:.01,count:1614,seed:20260918},systems:[
+  {system:'jev',run_id:'20260925T004541177372Z-a4c027600058',cost_basis:'estimated_input_tokens',metrics:{attempted:1614,successful:1614,errors:0,coverage:1,precision:.9544,recall:.6832,f1:.7963,accuracy:.8209,confusion:{true_positive:565,true_negative:760,false_positive:27,false_negative:262},latency_p50_ms:823.6,latency_p95_ms:1079.1,cost_known_count:1614,cost_coverage:1,known_cost_usd:.036729378,total_cost_usd:.036729378}},
+  {system:'luna',run_id:'20260925T014904391035Z-ba0833bb4475',cost_basis:'provider_reported_partial',metrics:{attempted:1614,successful:1611,errors:3,coverage:.9981,precision:.9476,recall:.6562,f1:.7754,accuracy:.8051,confusion:{true_positive:542,true_negative:755,false_positive:30,false_negative:284},latency_p50_ms:2346.4,latency_p95_ms:3548.4,cost_known_count:1611,cost_coverage:.9981,known_cost_usd:.2342294,total_cost_usd:null}}]};
+ const p=await page({schema_version:'1.0.0',runs:[]},'',{'headline.json':headline});const rendered=text(p.nodes.systems)+' '+text(p.nodes.status)+' '+text(p.nodes.metadata);
+ assert.match(rendered,/SUMMARY-ONLY/);assert.match(rendered,/Jev/);assert.match(rendered,/Luna/);assert.match(rendered,/TypeSafe AI/);assert.match(rendered,/OpenRouter/);assert.match(rendered,/F1/);assert.match(rendered,/79\.6%/);assert.match(rendered,/77\.5%/);assert.match(rendered,/1% sample/);assert.match(rendered,/Estimated from published input-token pricing/);assert.match(rendered,/Known provider-reported spend covers 1,611 of 1,614 cases/);assert.equal(p.nodes.controls.hidden,true);assert.equal(p.nodes.explorer.hidden,true);
 });
 test('preview invalid summaries fetch no unsafe artifacts',async()=>{
  const p=await page({schema_version:'1.0.0',runs:[{run_id:'invalid',status:'incomplete',validation_status:'invalid',rule_ids:['missing_coverage']}]},'?preview=1');

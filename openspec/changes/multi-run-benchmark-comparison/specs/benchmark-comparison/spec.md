@@ -258,9 +258,43 @@ The system SHALL generate byte-deterministic versioned public and preview indexe
 #### Scenario: The public index is empty
 
 - **GIVEN** the site loads a valid public index with an empty `runs` array
+- **AND** no canonical headline-only summary is present
 - **WHEN** the comparison page renders
 - **THEN** it shows an explicit no-published-results state
 - **AND** it does not attempt to select a task, cohort, system, or reference result
+
+#### Scenario: A reviewed headline-only exploratory summary is present
+
+- **GIVEN** the site loads a valid public index with an empty `runs` array
+- **AND** a strict canonical headline artifact contains only fixed reviewed identifiers, enumerated system and cost-basis values, and aggregate metrics
+- **AND** its coverage, confusion-derived quality metrics, cost coverage and totals, latency percentiles, sample counts, systems, and run IDs satisfy the declared invariants
+- **WHEN** the comparison page renders
+- **THEN** it shows the systems in a prominently labelled summary-only exploratory matrix using browser-owned fixed labels and explanatory copy
+- **AND** it shows the exact sample rate, count, and seed
+- **AND** it hides task/system selectors and the case explorer
+- **AND** it publishes no case-level evidence, downloads, rankings, winner language, or metric deltas
+- **AND** incomplete cost is displayed only as a known lower bound
+
+#### Scenario: A headline summary contains free-form or inconsistent data
+
+- **GIVEN** `results/published/headline.json` contains a free-form title, note, display name, provider, model ID, cost note, arbitrary run ID, or unknown field
+- **OR** a derived metric, cost field, latency percentile, attempted count, system identity, or run identity violates its invariant
+- **WHEN** the static exporter runs against an empty public index
+- **THEN** export fails before creating the destination
+
+#### Scenario: A stale headline exists beside indexed runs
+
+- **GIVEN** the validated public index contains one or more runs
+- **AND** `results/published/headline.json` is stale, malformed, or non-canonical
+- **WHEN** the static exporter runs
+- **THEN** the headline is neither validated nor copied
+- **AND** the indexed public bundles remain exportable
+
+#### Scenario: A headline summary contains an unknown or unsafe field
+
+- **GIVEN** `results/published/headline.json` contains a field outside its versioned allowlist or is not in canonical generated form
+- **WHEN** the static exporter runs
+- **THEN** export fails before creating the destination
 
 #### Scenario: Invalid run is encountered
 

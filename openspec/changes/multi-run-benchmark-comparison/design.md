@@ -46,6 +46,14 @@ The private authoritative cohort is written from dataset selection before any mo
 
 `latest` may remain as a convenience alias during migration, but the site does not use it as its only data source.
 
+### Headline-only exploratory summary
+
+When reviewed exploratory runs cannot yet satisfy the complete public-bundle contract, an optional `results/published/headline.json` may expose a narrower comparison. It is a separate strict, versioned, RFC-8785-canonical DTO specialized to the reviewed Jev/Luna comparison. Schema `1.1.0` contains only fixed task, dataset, and sample identifiers; enumerated system and cost-basis keys; exact allowlisted reviewed run IDs; and aggregate quality, coverage, latency, cost, and confusion values. It accepts no free-form title, notes, display name, provider, model ID, cost note, or arbitrary run identifier. The browser maps the structured keys to fixed reviewed labels and explanatory copy.
+
+Headline validation checks that attempted counts equal the declared sample count; systems and run IDs are unique; coverage, precision, recall, F1, accuracy, and cost coverage match their source counts within numeric tolerance; known and total cost fields agree with cost coverage; and latency p95 is not below p50. Unknown fields fail validation. The artifact contains no case identifiers, cohort members or digests, predictions, prompts, provider payloads, credentials, arbitrary errors, or download links.
+
+The exporter validates and copies the headline artifact only when the validated public index has no runs. If the index contains runs, any stale or malformed headline file is ignored and excluded from the export. The browser likewise consults it only when the public index is valid and empty. The view is labelled summary-only and exploratory, hides selectors and the case explorer, publishes no ranking or winner language, and treats incomplete cost as a known lower bound rather than a total. If neither indexed bundles nor a headline artifact exists, the original no-published-results state remains.
+
 ## Canonical System Identity
 
 Replace untyped model dictionaries at publication boundaries with a strict model identity:
@@ -191,7 +199,7 @@ The exact index schema will be implemented as strict Pydantic models and version
 
 The page first selects a task/version and compatible cohort, then allows multi-selecting systems/runs. Query parameters encode the selection so comparisons can be shared.
 
-When the public index has no runs, the page renders an explicit no-published-results state without attempting to choose a task, cohort, system, or reference result.
+When the public index has no runs, the page renders the optional strict headline-only exploratory summary without attempting to choose a task, cohort, system, or reference result. If that artifact is absent, it renders the explicit no-published-results state.
 
 ### Summary matrix
 
@@ -229,9 +237,10 @@ and index metadata must match, and unsafe or missing artifacts fail the build
 before upload.
 
 The initial review URL uses the repository's `github.io` project URL. The
-checked-in public index is allowed to be empty; in that state the deployed site
-must show the explicit no-published-results view rather than substituting
-fixture, preview, or unvalidated data. The deployment is verified over HTTPS by
+The checked-in public index is allowed to be empty; in that state the deployed site
+may show the separately validated headline-only exploratory summary, otherwise it
+must show the explicit no-published-results view. It never substitutes fixture,
+preview, raw, or unvalidated data. The deployment is verified over HTTPS by
 loading the page, its JavaScript and CSS, and the public index, and by confirming
 that preview and private paths are not served.
 

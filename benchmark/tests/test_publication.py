@@ -79,10 +79,12 @@ async def test_publish_index_export_round_trip_is_deterministic(publishable_run:
     assert generate_index(public_root) == index
     assert (public_root / "index.json").read_bytes() == first_bytes
 
+    (public_root / "headline.json").write_text('{"stale":"private prompt https://private.test"}')
     destination = tmp_path / "export"
     export_site(ROOT / "site", public_root, destination)
     exported_bundle = destination / "results/published/runs" / bundle.name
     assert validate_bundle(exported_bundle).valid
+    assert not (destination / "results/published/headline.json").exists()
     assert not (destination / "results/preview").exists()
     assert not (destination / "results/published/latest").exists()
 

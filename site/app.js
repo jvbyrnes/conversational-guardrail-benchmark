@@ -103,10 +103,42 @@ async function boot() {
   const params = new URLSearchParams(location.search), preview=params.get('preview') === '1';
   const base = new URL(preview ? '../results/preview/' : '../results/published/', location.href);
   async function read(url, json = true) { const response=await fetch(url); if(!response.ok) throw new Error(`HTTP ${response.status}`); return json ? response.json() : response.text(); }
+  async function readOptional(url) { const response=await fetch(url); if(response.status===404) return null; if(!response.ok) throw new Error(`HTTP ${response.status}`); return response.json(); }
+  function renderHeadline(headline) {
+    if (headline.schema_version !== '1.1.0' || headline.status !== 'exploratory' || !Array.isArray(headline.systems) || headline.systems.length !== 2) throw new Error('Unsupported headline schema');
+    const presentations={
+      jev:{displayName:'Jev',provider:'TypeSafe AI',modelId:'jev-latest',runId:'20260925T004541177372Z-a4c027600058',costBasis:'estimated_input_tokens',costNote:'Estimated from published input-token pricing; cost methods differ and are not ranked.'},
+      luna:{displayName:'Luna',provider:'OpenRouter',modelId:'openai/gpt-5.6-luna',runId:'20260925T014904391035Z-ba0833bb4475',costBasis:'provider_reported_partial',costNote:'Known provider-reported spend covers 1,611 of 1,614 cases; incomplete cost is shown as a lower bound.'}
+    };
+    const systems=headline.systems.map(system=>{const presentation=presentations[system.system];if(!presentation || system.run_id!==presentation.runId || system.cost_basis!==presentation.costBasis) throw new Error('Unsupported headline system');return {system,presentation};});
+    if(new Set(systems.map(entry=>entry.system.system)).size!==2) throw new Error('Unsupported headline systems');
+    $('#subtitle').textContent='Current exploratory comparison on a shared deterministic sample.';
+    $('#controls').hidden=true;$('#explorer').hidden=true;
+    const rate=Number((headline.sample.rate*100).toFixed(3));
+    $('#status').replaceChildren(
+      el('p','SUMMARY-ONLY EXPLORATORY COMPARISON — not a full-dataset benchmark.','warning'),
+      el('p',`${rate}% sample · ${headline.sample.count.toLocaleString('en-US')} cases · seed ${headline.sample.seed} · no case-level evidence published.`)
+    );
+    const table=el('table'), head=el('tr');head.append(el('th','Metric'));
+    systems.forEach(({presentation})=>{const th=el('th',presentation.displayName);th.append(el('p',`${presentation.modelId} · ${presentation.provider}`));head.append(th);});table.append(head);
+    const rows=[['F1','f1','percent'],['Precision','precision','percent'],['Recall','recall','percent'],['Accuracy','accuracy','percent'],['Coverage','coverage','percent'],['Errors','errors'],['Latency p50 (ms)','latency_p50_ms'],['Latency p95 (ms)','latency_p95_ms']];
+    for(const [label,key,kind] of rows){const tr=el('tr');tr.append(el('th',label));systems.forEach(({system})=>tr.append(el('td',format(system.metrics[key],kind))));table.append(tr);}
+    const confusion=el('tr');confusion.append(el('th','Confusion TP / TN / FP / FN'));systems.forEach(({system})=>confusion.append(el('td',['true_positive','true_negative','false_positive','false_negative'].map(key=>format(system.metrics.confusion[key])).join(' / '))));table.append(confusion);
+    const cost=el('tr');cost.append(el('th','Observed cost (USD)'));systems.forEach(({system,presentation})=>{const metrics=system.metrics,value=metrics.total_cost_usd ?? metrics.known_cost_usd;const prefix=metrics.total_cost_usd == null && value != null?'≥':'';const td=el('td',value == null?'Unavailable':`${prefix}${format(value,'money')}`);td.append(el('small',presentation.costNote));cost.append(td);});table.append(cost);
+    $('#systems').replaceChildren(table);
+    const provenance=el('dl',null,'metadata');
+    for(const [key,value] of Object.entries({title:'Jev vs Luna — WildJailbreak harmful-jailbreak detection',task:`${headline.task_id} / ${headline.task_version}`,dataset:headline.dataset.name,dataset_revision:headline.dataset.revision,source_runs:systems.map(({presentation})=>presentation.runId).join(', ')})) provenance.append(el('dt',key),el('dd',value));
+    $('#metadata').replaceChildren(provenance,el('p','Only aggregate metrics and sampling metadata are published; no case-level evidence or downloads are available.','warning'),el('p','Model snapshots were unavailable and provider defaults were unresolved for both systems.','warning'));
+    $('#compatibility').textContent='Quality scores use the same task and deterministic cohort. Cost methods differ and are not ranked.';
+  }
   const index = await read(new URL('index.json', base));
   if (index.schema_version?.split('.')[0] !== '1' || !Array.isArray(index.runs)) throw new Error('Unsupported catalogue schema');
   $('#subtitle').textContent = preview ? 'LOCAL PREVIEW — includes non-publishable runs' : 'Compare exact model runs on a shared benchmark task.';
-  if (!index.runs.length) {$('#status').textContent = preview ? 'No preview results.' : 'No published results yet.'; return;}
+  if (!index.runs.length) {
+    const headline=preview?null:await readOptional(new URL('headline.json',base));
+    if(headline){renderHeadline(headline);return;}
+    $('#status').textContent = preview ? 'No preview results.' : 'No published results yet.'; return;
+  }
   const entries=flatten(index), bundles=new Map(), predictions=new Map();
   for (const run of index.runs.filter(r => !r.systems?.length)) $('#status').append(el('p', `${run.run_id}: ${run.status} / ${run.validation_status} ${run.incomplete_reason || ''} ${(run.rule_ids || []).join(', ')}`));
   if (!entries.length) return;
