@@ -69,5 +69,5 @@
 - [x] 7.3 Publish the current site to the repository's `github.io` project URL, preserving the explicit no-published-results state when the public index is empty
 - [x] 7.4 Verify the live HTTPS page, JavaScript, CSS, and public index, and confirm preview, private, credential, cached-dataset, and internal-source paths are not served
 - [ ] 7.5 Optionally connect an operator-approved Hostinger-managed subdomain after the exact hostname and existing DNS records are reviewed and the domain is verified with GitHub
-- [ ] 7.6 Share the review URL and record requested interface changes before further site refinement
+- [x] 7.6 Share the review URL and record requested interface changes before further site refinement
 - [x] 7.7 Add and locally verify a strict canonical headline-only exploratory comparison for reviewed Jev and Luna aggregates without publishing case-level evidence
