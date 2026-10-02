@@ -9,8 +9,9 @@ supporting publication workflow have been reviewed.
 
 - [x] Generate a fresh validated static export and publish it to the repository's
   GitHub Pages project URL without deploying preview or private evidence.
-- [ ] Verify the live HTTPS site and its expected empty-results state when the
-  public index contains no publishable runs, then collect interface feedback.
+- [x] Verify the live HTTPS site and its summary-only exploratory Jev/Luna view
+  while the public index is empty; confirm private paths are absent and share the
+  review URL for interface feedback.
 - [ ] Optionally connect an operator-approved Hostinger-managed subdomain after
   reviewing the exact hostname, existing DNS records, and GitHub verification.
 
