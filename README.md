@@ -107,9 +107,12 @@ task/dataset/sample identifiers, enumerated Jev/Luna system and cost-basis value
 exact allowlisted run IDs, and internally consistent aggregate metrics. Display labels
 and explanatory text are fixed in the browser rather than accepted from publication
 data. The exporter validates and copies the headline only for an empty index; a stale
-headline is ignored and excluded when indexed runs exist. It contains no case-level
-evidence or downloads. The exporter prepares all files before atomically creating the
-destination.
+headline is ignored and excluded when indexed runs exist. An optional, separately
+validated `review-samples.json` pins ten exact reviewed prompts and decisions under
+fixed public case ordinals, without publishing internal source IDs: five
+where Jev was correct and Luna was incorrect, and five where both were incorrect.
+The browser presents those cases in a second tab with collapsed prompt text and no
+download link. The exporter prepares all files before atomically creating the destination.
 
 In the viewer, select a task/cohort, then two or more systems and an explicit reference.
 Shared URLs pin exact run IDs. Duplicate results default to the latest completed valid
