@@ -8,6 +8,15 @@ import shutil
 import tempfile
 from pathlib import Path
 
+_ROOT_INDEX = b"""<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>Open benchmark</title>
+<a href="./site/">Open benchmark</a>
+<script>location.replace('./site/' + location.search + location.hash);</script>
+</html>
+"""
+
 
 def export_site(site_root: Path, publication_root: Path, destination: Path) -> Path:
     """Validate all referenced bytes before atomically creating a new export directory."""
@@ -25,7 +34,10 @@ def export_site(site_root: Path, publication_root: Path, destination: Path) -> P
         raise ValueError("public index is not in canonical generated form")
     # Inspect the schema-validated wire representation to avoid coupled DTO accessors.
     wire = json.loads(index.model_dump_json())
-    files: dict[Path, bytes] = {Path("results/published/index.json"): index_bytes}
+    files: dict[Path, bytes] = {
+        Path("index.html"): _ROOT_INDEX,
+        Path("results/published/index.json"): index_bytes,
+    }
     headline_path = publication_root / "headline.json"
     review_samples_path = publication_root / "review-samples.json"
     if not wire["runs"] and headline_path.exists():

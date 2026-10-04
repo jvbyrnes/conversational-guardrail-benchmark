@@ -96,8 +96,12 @@ that validates indexed artifacts and includes only the viewer and public bundles
 ```bash
 uv run guardrail-bench export-site /tmp/guardrail-public-site
 python -m http.server 8000 --directory /tmp/guardrail-public-site
-# Open http://localhost:8000/site/
+# Open http://localhost:8000/
 ```
+
+The export's root `index.html` redirects to `./site/`, preserving the query string
+and fragment while replacing the browser history entry. An “Open benchmark” link
+provides a fallback when JavaScript is disabled. Viewer and data paths stay unchanged.
 
 The exporter excludes `results/preview/`, raw runs, the legacy alias, and all other
 repository files. It refuses an existing output directory, a checksum mismatch, or,
