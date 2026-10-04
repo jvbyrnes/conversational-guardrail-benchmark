@@ -13,7 +13,7 @@ def test_static_site_behavior() -> None:
     if node is None:
         pytest.skip("Node.js is required for the site's offline behavior tests")
     result = subprocess.run(
-        [node, "--test", "site/tests/app.test.cjs"],
+        [node, "--test", "site/tests/app.test.cjs", "site/tests/redirect.test.cjs"],
         cwd=root,
         capture_output=True,
         text=True,

@@ -61,11 +61,19 @@ def test_empty_index_cli_and_private_file_exclusion(tmp_path: Path, capsys: pyte
     destination = tmp_path / "export"
     export_site(ROOT / "site", published, destination)
     assert sorted(str(path.relative_to(destination)) for path in destination.rglob("*") if path.is_file()) == [
+        "index.html",
         "results/published/index.json",
         "site/app.js",
         "site/index.html",
         "site/styles.css",
     ]
+    root_html = (destination / "index.html").read_text()
+    assert '<a href="./site/">Open benchmark</a>' in root_html
+    assert "location.replace(" in root_html
+    assert "location.search" in root_html
+    assert "location.hash" in root_html
+    for name in ("index.html", "app.js", "styles.css"):
+        assert (destination / "site" / name).read_bytes() == (ROOT / "site" / name).read_bytes()
     with pytest.raises(ValueError, match="already exists"):
         export_site(ROOT / "site", published, destination)
 
