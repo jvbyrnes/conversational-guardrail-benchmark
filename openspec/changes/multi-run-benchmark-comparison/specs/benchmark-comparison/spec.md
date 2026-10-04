@@ -272,8 +272,19 @@ The system SHALL generate byte-deterministic versioned public and preview indexe
 - **THEN** it shows the systems in a prominently labelled summary-only exploratory matrix using browser-owned fixed labels and explanatory copy
 - **AND** it shows the exact sample rate, count, and seed
 - **AND** it hides task/system selectors and the case explorer
-- **AND** it publishes no case-level evidence, downloads, rankings, winner language, or metric deltas
+- **AND** it publishes no case-level downloads, rankings, winner language, or metric deltas
 - **AND** incomplete cost is displayed only as a known lower bound
+
+#### Scenario: Exact reviewed case samples accompany the headline
+
+- **GIVEN** the empty public index and strict canonical headline are accompanied by a strict canonical reviewed-sample artifact
+- **AND** that artifact pins the exact source runs, deterministic selection method and seed, two five-case groups, public case ordinals, source labels, ground truth, Jev decisions and scores, Luna decisions, and reviewed case text without publishing internal source IDs
+- **WHEN** the comparison page renders
+- **THEN** it exposes a second case-review tab while keeping the aggregate overview as the default
+- **AND** it labels the two groups as Jev-correct/Luna-incorrect and both-incorrect
+- **AND** it renders all case text through inert text nodes inside collapsed case details
+- **AND** it provides no case-level download link
+- **AND** any changed, unknown, inconsistent, non-canonical, or independently supplied reviewed-sample payload causes export to fail before creating the destination
 
 #### Scenario: A headline summary contains free-form or inconsistent data
 

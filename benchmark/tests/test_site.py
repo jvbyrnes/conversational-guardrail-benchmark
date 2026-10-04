@@ -27,5 +27,9 @@ def test_static_site_contract() -> None:
     html = (root / "site/index.html").read_text()
     script = (root / "site/app.js").read_text()
     assert 'id="systems"' in html and 'id="metadata"' in html
+    assert 'id="overview-tab"' in html and 'id="review-tab"' in html
+    assert 'id="review-samples"' in html
+    assert 'role="tablist"' in html and html.count('role="tab"') == 2
+    assert html.count('role="tabpanel"') == 2
     assert "published/latest" not in script + html
     assert "innerHTML" not in script

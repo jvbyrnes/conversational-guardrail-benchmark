@@ -14,6 +14,7 @@ def export_site(site_root: Path, publication_root: Path, destination: Path) -> P
     from guardrail_bench.comparison import fingerprint
     from guardrail_bench.headline import HeadlineComparison, headline_bytes
     from guardrail_bench.publication import PublicManifest, PublishedIndex, _bytes, validate_bundle
+    from guardrail_bench.review_samples import ReviewedCaseSamples, review_sample_bytes
 
     if destination.exists():
         raise ValueError("export destination already exists; choose a new directory")
@@ -26,6 +27,7 @@ def export_site(site_root: Path, publication_root: Path, destination: Path) -> P
     wire = json.loads(index.model_dump_json())
     files: dict[Path, bytes] = {Path("results/published/index.json"): index_bytes}
     headline_path = publication_root / "headline.json"
+    review_samples_path = publication_root / "review-samples.json"
     if not wire["runs"] and headline_path.exists():
         if headline_path.is_symlink():
             raise ValueError("headline summary must not be a symlink")
@@ -37,6 +39,19 @@ def export_site(site_root: Path, publication_root: Path, destination: Path) -> P
         if headline_bytes(headline) != headline_content:
             raise ValueError("headline summary is not in canonical generated form")
         files[Path("results/published/headline.json")] = headline_content
+        if review_samples_path.exists():
+            if review_samples_path.is_symlink():
+                raise ValueError("review samples must not be a symlink")
+            try:
+                review_content = review_samples_path.read_bytes()
+                review_samples = ReviewedCaseSamples.model_validate_json(review_content)
+            except (OSError, ValueError) as error:
+                raise ValueError("review samples failed strict validation") from error
+            if review_sample_bytes(review_samples) != review_content:
+                raise ValueError("review samples are not in canonical generated form")
+            files[Path("results/published/review-samples.json")] = review_content
+    elif not wire["runs"] and review_samples_path.exists():
+        raise ValueError("review samples require the reviewed headline summary")
     for name in ("index.html", "app.js", "styles.css"):
         files[Path("site") / name] = (site_root / name).read_bytes()
     bundle_names = {"manifest.json", "aggregate.json", "cohort.json", "predictions.jsonl", "validation-report.json"}

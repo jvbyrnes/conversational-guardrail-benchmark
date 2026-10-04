@@ -71,3 +71,4 @@
 - [ ] 7.5 Optionally connect an operator-approved Hostinger-managed subdomain after the exact hostname and existing DNS records are reviewed and the domain is verified with GitHub
 - [x] 7.6 Share the review URL and record requested interface changes before further site refinement
 - [x] 7.7 Add and locally verify a strict canonical headline-only exploratory comparison for reviewed Jev and Luna aggregates without publishing case-level evidence
+- [x] 7.8 Add a strict fingerprint-pinned ten-case review artifact and second site tab with five Jev-correct/Luna-incorrect cases and five cases both systems classified incorrectly

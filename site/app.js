@@ -104,7 +104,49 @@ async function boot() {
   const base = new URL(preview ? '../results/preview/' : '../results/published/', location.href);
   async function read(url, json = true) { const response=await fetch(url); if(!response.ok) throw new Error(`HTTP ${response.status}`); return json ? response.json() : response.text(); }
   async function readOptional(url) { const response=await fetch(url); if(response.status===404) return null; if(!response.ok) throw new Error(`HTTP ${response.status}`); return response.json(); }
-  function renderHeadline(headline) {
+  function selectTab(selected) {
+    const review=selected==='review';
+    $('#overview-panel').hidden=review; $('#review-panel').hidden=!review;
+    $('#overview-tab').className=review?'tab':'tab active'; $('#review-tab').className=review?'tab active':'tab';
+    $('#overview-tab').ariaSelected=String(!review); $('#review-tab').ariaSelected=String(review);
+    $('#overview-tab').tabIndex=review?-1:0; $('#review-tab').tabIndex=review?0:-1;
+  }
+  $('#page-tabs').hidden=true; $('#review-panel').hidden=true; $('#overview-panel').hidden=false;
+  $('#overview-tab').onclick=()=>selectTab('overview'); $('#review-tab').onclick=()=>selectTab('review');
+  const tabs=[$('#overview-tab'),$('#review-tab')];
+  tabs.forEach((tab,index)=>tab.addEventListener('keydown',event=>{
+    if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key)) return;
+    event.preventDefault();
+    const target=event.key==='Home'?tabs[0]:event.key==='End'?tabs[1]:tabs[(index+(event.key==='ArrowRight'?1:-1)+tabs.length)%tabs.length];
+    target.onclick(); target.focus();
+  }));
+  function renderReviewSamples(review) {
+    const expectedGroups=[['jev_correct_luna_wrong','Jev correct, Luna incorrect'],['both_wrong','Both incorrect']];
+    if(review?.schema_version!=='1.0.0' || review.status!=='reviewed_sample' || review.task_id!=='harmful_jailbreak' || review.task_version!=='1.0.0' ||
+      review.source_runs?.jev!=='20260925T004541177372Z-a4c027600058' || review.source_runs?.luna!=='20260925T014904391035Z-ba0833bb4475' ||
+      review.selection?.method!=='uniform_random_without_replacement' || review.selection.seed!==20261004 || review.selection.provider_errors_excluded!==true ||
+      !Array.isArray(review.groups) || review.groups.length!==2) throw new Error('Unsupported review sample schema');
+    const seen=new Set(); $('#review-samples').replaceChildren();
+    review.groups.forEach((group,index)=>{
+      const [expectedId,expectedTitle]=expectedGroups[index];
+      if(group.id!==expectedId || group.title!==expectedTitle || !Array.isArray(group.samples) || group.samples.length!==5) throw new Error('Unsupported review sample group');
+      const section=el('section',null,'review-group'); section.append(el('h3',group.title),el('p','5 cases'));
+      group.samples.forEach(sample=>{
+        if(!sample || typeof sample.case_id!=='string' || seen.has(sample.case_id) || typeof sample.prompt!=='string' || typeof sample.ground_truth!=='boolean' ||
+          typeof sample.jev_decision!=='boolean' || typeof sample.luna_decision!=='boolean' || !Number.isFinite(sample.jev_score)) throw new Error('Unsupported review sample');
+        const jevCorrect=sample.jev_decision===sample.ground_truth,lunaCorrect=sample.luna_decision===sample.ground_truth;
+        if((group.id==='jev_correct_luna_wrong' && (!jevCorrect || lunaCorrect)) || (group.id==='both_wrong' && (jevCorrect || lunaCorrect))) throw new Error('Review sample does not match its group');
+        seen.add(sample.case_id);
+        const card=el('details',null,'review-card'), summary=el('summary',sample.case_id);
+        const facts=el('div',null,'review-facts');
+        const decision=value=>value?'Harmful':'Benign';
+        facts.append(el('p',`Source label: ${sample.source_label}`),el('p',`Ground truth: ${decision(sample.ground_truth)}`),el('p',`Jev: ${decision(sample.jev_decision)} · score ${format(sample.jev_score)}`),el('p',`Luna: ${decision(sample.luna_decision)}`));
+        card.append(summary,facts,el('h4','Case text'),el('p',sample.prompt,'case-prompt')); section.append(card);
+      });
+      $('#review-samples').append(section);
+    });
+  }
+  function renderHeadline(headline, review) {
     if (headline.schema_version !== '1.1.0' || headline.status !== 'exploratory' || !Array.isArray(headline.systems) || headline.systems.length !== 2) throw new Error('Unsupported headline schema');
     const presentations={
       jev:{displayName:'Jev',provider:'TypeSafe AI',modelId:'jev-latest',runId:'20260925T004541177372Z-a4c027600058',costBasis:'estimated_input_tokens',costNote:'Estimated from published input-token pricing; cost methods differ and are not ranked.'},
@@ -117,7 +159,7 @@ async function boot() {
     const rate=Number((headline.sample.rate*100).toFixed(3));
     $('#status').replaceChildren(
       el('p','SUMMARY-ONLY EXPLORATORY COMPARISON — not a full-dataset benchmark.','warning'),
-      el('p',`${rate}% sample · ${headline.sample.count.toLocaleString('en-US')} cases · seed ${headline.sample.seed} · no case-level evidence published.`)
+      el('p',`${rate}% sample · ${headline.sample.count.toLocaleString('en-US')} cases · seed ${headline.sample.seed}${review ? ' · ten reviewed cases available.' : ' · no case-level evidence published.'}`)
     );
     const table=el('table'), head=el('tr');head.append(el('th','Metric'));
     systems.forEach(({presentation})=>{const th=el('th',presentation.displayName);th.append(el('p',`${presentation.modelId} · ${presentation.provider}`));head.append(th);});table.append(head);
@@ -128,15 +170,16 @@ async function boot() {
     $('#systems').replaceChildren(table);
     const provenance=el('dl',null,'metadata');
     for(const [key,value] of Object.entries({title:'Jev vs Luna — WildJailbreak harmful-jailbreak detection',task:`${headline.task_id} / ${headline.task_version}`,dataset:headline.dataset.name,dataset_revision:headline.dataset.revision,source_runs:systems.map(({presentation})=>presentation.runId).join(', ')})) provenance.append(el('dt',key),el('dd',value));
-    $('#metadata').replaceChildren(provenance,el('p','Only aggregate metrics and sampling metadata are published; no case-level evidence or downloads are available.','warning'),el('p','Model snapshots were unavailable and provider defaults were unresolved for both systems.','warning'));
+    $('#metadata').replaceChildren(provenance,el('p','Only aggregate metrics and sampling metadata are published; no case-level downloads are available.','warning'),el('p','Model snapshots were unavailable and provider defaults were unresolved for both systems.','warning'));
     $('#compatibility').textContent='Quality scores use the same task and deterministic cohort. Cost methods differ and are not ranked.';
+    if(review){renderReviewSamples(review);$('#page-tabs').hidden=false;selectTab('overview');}
   }
   const index = await read(new URL('index.json', base));
   if (index.schema_version?.split('.')[0] !== '1' || !Array.isArray(index.runs)) throw new Error('Unsupported catalogue schema');
   $('#subtitle').textContent = preview ? 'LOCAL PREVIEW — includes non-publishable runs' : 'Compare exact model runs on a shared benchmark task.';
   if (!index.runs.length) {
     const headline=preview?null:await readOptional(new URL('headline.json',base));
-    if(headline){renderHeadline(headline);return;}
+    if(headline){const review=await readOptional(new URL('review-samples.json',base));renderHeadline(headline,review);return;}
     $('#status').textContent = preview ? 'No preview results.' : 'No published results yet.'; return;
   }
   const entries=flatten(index), bundles=new Map(), predictions=new Map();

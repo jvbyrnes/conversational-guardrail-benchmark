@@ -157,6 +157,32 @@ def test_export_includes_only_the_checked_in_canonical_headline_summary(tmp_path
     assert (destination / "results/published/headline.json").read_bytes() == headline_bytes
 
 
+def test_export_includes_the_exact_reviewed_case_samples_with_the_headline(tmp_path: Path) -> None:
+    published = tmp_path / "results/published"
+    artifact_main(["index", "--publication-root", str(published)])
+    for name in ("headline.json", "review-samples.json"):
+        (published / name).write_bytes((ROOT / "results/published" / name).read_bytes())
+
+    destination = tmp_path / "export"
+    export_site(ROOT / "site", published, destination)
+    assert (destination / "results/published/review-samples.json").read_bytes() == (
+        ROOT / "results/published/review-samples.json"
+    ).read_bytes()
+    assert b"wildjailbreak-" not in (destination / "results/published/review-samples.json").read_bytes()
+
+
+def test_export_rejects_tampered_reviewed_case_samples(tmp_path: Path) -> None:
+    published = tmp_path / "results/published"
+    artifact_main(["index", "--publication-root", str(published)])
+    (published / "headline.json").write_bytes((ROOT / "results/published/headline.json").read_bytes())
+    samples = json.loads((ROOT / "results/published/review-samples.json").read_text())
+    samples["groups"][0]["samples"][0]["prompt"] = "tampered"
+    (published / "review-samples.json").write_bytes(canonical_json(samples) + b"\n")
+
+    with pytest.raises(ValueError, match="review samples"):
+        export_site(ROOT / "site", published, tmp_path / "tampered-samples")
+
+
 @pytest.mark.parametrize(
     ("path", "unsafe_value"),
     [
